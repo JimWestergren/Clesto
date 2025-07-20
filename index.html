@@ -1452,7 +1452,7 @@
     <script>
     window.addEventListener('load', () => { // Changed from DOMContentLoaded
         // --- Debug Flag ---
-        const debug = true; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
+        const debug = false; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
 
         // --- DOM Element References ---
         const boardElement = document.getElementById('board');
@@ -5757,19 +5757,28 @@
         // --- START: Add Audio Control Event Listeners ---
         // Function to load settings from localStorage
         function loadAudioSettings() {
-            // Load Music Volume
-            const savedVolume = localStorage.getItem('clestoMusicVolume');
-            const initialVolume = (savedVolume !== null) ? parseFloat(savedVolume) : 0.5; // Default 50%
+            // Load Music Volume (Slider position 0-1)
+            const savedSliderPosition = localStorage.getItem('clestoMusicVolume');
+            // *** CHANGE DEFAULT HERE ***
+            // Default slider position to 10% (0.1) if nothing is saved
+            const initialSliderPosition = (savedSliderPosition !== null) ? parseFloat(savedSliderPosition) : 0.1; // Changed default from 0.5 to 0.1
+
             if (musicVolumeSlider && backgroundMusicElement) {
-                musicVolumeSlider.value = initialVolume;
-                backgroundMusicElement.volume = initialVolume;
-                 if (musicVolumeDisplay) { // Update display if element exists
-                     musicVolumeDisplay.textContent = `${Math.round(initialVolume * 100)}%`;
+                // Set the slider's visual position
+                musicVolumeSlider.value = initialSliderPosition;
+
+                // Calculate and set the *actual* audio volume (scaled down)
+                const actualVolume = initialSliderPosition * 0.5; // Scale slider value by 50%
+                backgroundMusicElement.volume = actualVolume;
+
+                 // Update display based on the *slider's* position
+                 if (musicVolumeDisplay) {
+                     musicVolumeDisplay.textContent = `${Math.round(initialSliderPosition * 100)}%`;
                  }
-                console.log(`Music volume initialized to ${initialVolume}`);
+                console.log(`Music volume slider initialized to ${initialSliderPosition * 100}%, actual audio volume set to ${actualVolume}`);
             }
 
-            // Load SFX Toggle State
+            // Load SFX Toggle State (remains the same)
             const savedSfxState = localStorage.getItem('clestoSfxEnabled');
             // Default to true (enabled) if nothing is saved
             soundEffectsEnabled = (savedSfxState !== null) ? (savedSfxState === 'true') : true;
@@ -5782,13 +5791,21 @@
         // Music Volume Slider Listener
         if (musicVolumeSlider && backgroundMusicElement) {
             musicVolumeSlider.addEventListener('input', (event) => {
-                const volume = parseFloat(event.target.value);
-                backgroundMusicElement.volume = volume;
-                localStorage.setItem('clestoMusicVolume', volume.toString()); // Save preference
-                 if (musicVolumeDisplay) { // Update display if element exists
-                     musicVolumeDisplay.textContent = `${Math.round(volume * 100)}%`;
+                // Get the slider's current position (0 to 1)
+                const sliderPosition = parseFloat(event.target.value);
+
+                // Calculate the actual volume to apply (max 50%)
+                const actualVolume = sliderPosition * 0.5;
+                backgroundMusicElement.volume = actualVolume;
+
+                // Save the *slider's* position (0-1) to localStorage
+                localStorage.setItem('clestoMusicVolume', sliderPosition.toString());
+
+                 // Update display based on the *slider's* position
+                 if (musicVolumeDisplay) {
+                     musicVolumeDisplay.textContent = `${Math.round(sliderPosition * 100)}%`;
                  }
-                // console.log(`Music volume set to ${volume}`);
+                // console.log(`Slider at ${sliderPosition * 100}%, actual audio volume ${actualVolume}`);
                  handleFirstInteraction(); // Ensure music attempts to play if user adjusts volume first
             });
         } else {
