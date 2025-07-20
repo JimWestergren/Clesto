@@ -1,102 +1,145 @@
-/* --- Global Variables & Basic Setup --- */
+/**
+ * Clesto Jungle Theme Stylesheet
+ * Version: 1.1
+ * Description: A visually rich theme for the Clesto game, emphasizing jungle elements like wood, parchment, and deep greens.
+ */
+
+/* Import necessary Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Merriweather:wght@400;700&display=swap');
+
+/* ==========================================================================
+   1. Global Variables (:root)
+   ========================================================================== */
 :root {
-  /* Player Colors */
-  --orange-color: #e67e22;
-  --yellow-color: #f1c40f;
-  --dark-orange: #d35400;
-  --dark-yellow: #f39c12; /* Slightly adjusted for better visibility */
-  --dark-gray: #343a40; /* For text on yellow */
+  /* Font Families */
+  --font-body: "Roboto", Tahoma, Geneva, Verdana, sans-serif;
+  --font-heading: 'Merriweather', serif;
 
-  /* UI Colors */
-  --primary-bg: #6fb367; /* Main Green Background */
-  --secondary-bg: #fdf6e3; /* Light Cream/Beige for Panels */
-  --tertiary-bg: #f8f9fa; /* Lighter Grey for Logs/Code */
-  --text-dark: #4a4a4a; /* Dark Text for Readability */
-  --text-light: #ffffff; /* Light Text (e.g., on buttons) */
-  --border-color: #ced4da; /* Default Border (lighter gray) */
-  --medium-gray: #adb5bd; /* For placeholders, disabled states */
-  --button-default-bg: #4caf50; /* Default Green Button */
-  --button-default-hover: #45a049; /* Darker Green Hover */
+  /* Jungle Theme Color Palette */
+  --jungle-deep-green: #2c5d3e;    /* Base background */
+  --jungle-mid-green: #4a7c59;     /* Accent, buttons */
+  --jungle-light-green: #78a084;   /* Lighter accent */
+  --jungle-dark-brown: #5d4037;    /* Borders, buttons, text */
+  --jungle-mid-brown: #8d6e63;     /* Panel background */
+  --jungle-light-tan: #d7ccc8;     /* Borders, subtle text */
+  --jungle-parchment: #f5f5f0;     /* Log backgrounds, light text */
+  --jungle-text-dark: #3e2723;     /* Main dark text */
+  --jungle-text-light: var(--jungle-parchment); /* Main light text */
 
-  /* Highlight & Feedback Colors */
-  --cell-highlight-move: rgba(0, 255, 0, 0.7);
-  --cell-highlight-attack: rgba(255, 0, 0, 0.7);
-  --piece-select-glow: rgba(0, 191, 255, 0.9); /* Deep sky blue glow */
-  --hungry-outline: rgba(255, 0, 0, 0.8); /* Red for hungry */
-  --ai-move-from-bg: rgba(0, 0, 255, 0.15);
-  --ai-move-to-bg: rgba(0, 0, 255, 0.3);
-  --focus-outline: 2px solid #007bff; /* Standard blue focus */
-  --flash-red-bg: rgba(255, 0, 0, 0.5);
-  --flash-green-bg: rgba(0, 255, 0, 0.5);
-  --error-color: #dc3545; /* Red for errors */
-  --success-color: #28a745; /* Green for success */
+  /* Player Colors (Richer Tones) */
+  --orange-color: #f57c00;         /* Orange player accent */
+  --yellow-color: #ffb300;         /* Yellow player accent / Gold */
+  --dark-orange: #ef6c00;          /* Darker orange */
+  --dark-yellow: #ffa000;         /* Darker yellow/gold */
+
+  /* UI Element Colors */
+  --panel-bg: var(--jungle-mid-brown);
+  --panel-border: var(--jungle-dark-brown);
+  --panel-text: var(--jungle-text-light);
+  --panel-heading-text: var(--jungle-parchment);
+  --log-bg: var(--jungle-parchment);
+  --log-text: var(--jungle-text-dark);
+  --log-border: #a1887f;
+  --button-bg: var(--jungle-dark-brown);
+  --button-text: var(--jungle-text-light);
+  --button-border: #4e342e;
+  --button-hover-bg: #6d4c41;
+  --button-disabled-bg: #a1887f;
+  --button-disabled-text: #cfcfcf;
+
+  /* Feedback & Highlight Colors */
+  --cell-highlight-move: rgba(0, 255, 0, 0.7);   /* Bright Green (User Request) */
+  --cell-highlight-move-bg: rgba(0, 255, 0, 0.1); /* Bright Green BG (User Request) */
+  --cell-highlight-attack: rgba(200, 80, 80, 0.7);  /* Earthy Red */
+  --cell-highlight-attack-bg: rgba(200, 80, 80, 0.15);/* Earthy Red BG */
+  --cell-highlight-move-dot: rgba(0, 150, 0, 0.6); /* Bright Green Dot (User Request) */
+  --cell-highlight-attack-dot: rgba(160, 50, 50, 0.6);/* Earthy Red Dot */
+  --piece-select-glow: rgba(255, 179, 0, 0.9); /* Gold */
+  --hungry-outline: rgba(229, 57, 53, 0.9);   /* Deep Red */
+  --ai-move-from-bg: rgba(100, 120, 200, 0.25);/* Subtle Blue */
+  --ai-move-to-bg: rgba(100, 120, 200, 0.5);  /* Subtle Blue */
+  --focus-outline: 2px solid var(--yellow-color); /* Gold Focus */
+  --flash-red-bg: rgba(229, 57, 53, 0.5);
+  --flash-green-bg: rgba(120, 160, 132, 0.5); /* Theme Green Flash */
+  --error-color: #e53935;                    /* Standard Red */
+  --success-color: #43a047;                  /* Standard Green */
+
+  /* Textures */
+  --wood-texture: url('https://staticjw.com/clesto/play/wood-pattern.png');
+  --parchment-texture: url('https://staticjw.com/clesto/play/textured-paper.png');
+  --jungle-bg-texture: url('https://staticjw.com/clesto/play/natural-paper.png');
 
   /* Layout Dimensions */
   --board-max-width: 600px;
-  --ui-max-width: 300px;
-
-  /* Piece Dimensions (Calculated based on board padding/columns) */
-  --piece-width-percent: 12.07%; /* (100/7) * 0.845 */
-  --piece-height-percent: 9.38%; /* (100/9) * 0.845 - Approx for aspect ratio based on width */
+  --ui-max-width: 330px;             /* Slightly wider UI */
+  --piece-width-percent: 12.07%;     /* Calculated piece width */
+  --piece-height-percent: 9.38%;    /* Calculated piece height */
 }
 
+/* ==========================================================================
+   2. Base Styles
+   ========================================================================== */
 body {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--font-body);
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: var(--primary-bg);
-  color: var(--text-dark);
+  background-color: var(--jungle-deep-green);
+  background-image: var(--jungle-bg-texture);
+  color: var(--jungle-text-light); /* Default light text for body */
   padding: 10px;
   margin: 0;
   box-sizing: border-box;
   width: 100%;
   min-height: 100vh;
+  line-height: 1.5; /* Improve default line spacing */
 }
 
+/* Optional H1 Styling (if added back to HTML) */
 h1 {
-  margin-top: 10px;
-  margin-bottom: 15px;
-  color: var(--text-light);
-  font-weight: 300;
+  font-family: var(--font-heading);
+  margin: 10px 0 15px 0;
+  color: var(--jungle-light-tan);
+  font-weight: 700;
   padding-bottom: 10px;
-  font-size: 1.8em;
+  font-size: 2em;
   text-align: center;
   width: 100%;
   max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px);
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
+  letter-spacing: 1px;
 }
 
 main {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 20px;
-  margin-top: 10px;
+  gap: 25px; /* Space between board and UI */
+  margin-top: 15px;
   width: 100%;
   max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px);
   box-sizing: border-box;
 }
 
-/* --- Board Styling --- */
+/* ==========================================================================
+   3. Game Board & Grid
+   ========================================================================== */
 #board {
   width: var(--board-max-width);
   max-width: 100%;
-  aspect-ratio: 7.1 / 9; /* Board image ratio */
+  aspect-ratio: 7.1 / 9; /* Maintain board image ratio */
   height: auto;
-  border: none;
+  border: 4px solid var(--jungle-dark-brown); /* Wood frame */
   position: relative;
   background-image: url("https://staticjw.com/clesto/board.png");
   background-size: cover;
   background-position: center;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-  border-radius: 5px;
-  outline: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  outline-color: var(--yellow-color); /* Use variable for outline */
   box-sizing: border-box;
-  /* Adjust padding based on board image specifics */
-  /* These values seem to align the grid well */
-  padding: 4.5% 4.3%; /* ~27px top/bottom, ~26px left/right on 600px width */
-  overflow: hidden;
+  padding: 4.5% 4.3%; /* Align grid with background image */
+  overflow: hidden; /* Prevent content spillover */
 }
 
 #board-grid-wrapper {
@@ -106,11 +149,11 @@ main {
   grid-template-columns: repeat(7, 1fr);
   grid-template-rows: repeat(9, 1fr);
   position: relative;
-  outline: none;
+  outline: none; /* No outline needed on the wrapper itself */
 }
 
 #board:focus {
-  box-shadow: 0 0 0 3px var(--focus-outline);
+  box-shadow: 0 0 0 3px var(--focus-outline); /* Focus on board container */
 }
 
 .cell {
@@ -119,64 +162,59 @@ main {
   border: none;
   box-sizing: border-box;
   position: relative;
-  display: flex;
+  display: flex; /* For centering content if needed */
   justify-content: center;
   align-items: center;
-  font-size: 0.6em;
-  color: rgba(0, 0, 0, 0.3);
+  font-size: 0.6em; /* Coordinate text size */
+  color: rgba(0, 0, 0, 0.1); /* Subtle coordinate text */
   user-select: none;
-  background-clip: padding-box;
+  background-clip: padding-box; /* Ensure background respects padding */
   transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-  outline: none;
+  outline-color: var(--yellow-color);
+  border-radius: 2px; /* Slight rounding for highlights */
 }
 
 .cell:focus {
-  box-shadow: inset 0 0 0 3px var(--focus-outline);
-  z-index: 5;
+  box-shadow: inset 0 0 0 3px var(--focus-outline); /* Inner focus */
+  z-index: 5; /* Bring focused cell above others */
 }
 
+/* Optional cell pseudo-element for effects */
 .cell::before {
   content: "";
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0; /* Covers the entire cell */
   pointer-events: none;
   box-sizing: border-box;
   border-radius: inherit;
-  opacity: 0.8;
+  opacity: 0.8; /* Example */
 }
 
-/* Specific terrain styles (background is handled by board image) */
-/* .water::before {} */
-/* .trap-orange::before {} */
-/* .trap-yellow::before {} */
-/* .den-orange::before {} */
-/* .den-yellow::before {} */
-
-/* --- Piece Styling --- */
+/* ==========================================================================
+   4. Pieces
+   ========================================================================== */
 .piece {
   width: var(--piece-width-percent);
   aspect-ratio: 1 / 1;
   height: auto;
   position: absolute;
-  left: 0; /* Set by JS */
-  top: 0; /* Set by JS */
+  left: 0; /* Positioned by JS */
+  top: 0;  /* Positioned by JS */
   display: flex;
   justify-content: center;
   align-items: center;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
-  z-index: 10;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35);
+  z-index: 10; /* Above cells */
   transition: transform 0.3s ease-in-out, box-shadow 0.2s ease,
-    outline 0.2s ease, left 0.3s ease-in-out, top 0.3s ease-in-out;
+              outline 0.2s ease, left 0.3s ease-in-out, top 0.3s ease-in-out;
   user-select: none;
-  overflow: visible;
+  overflow: visible; /* Allow indicators to show outside */
   background: none;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.1); /* Subtle edge */
   border-radius: 50%;
-  outline: none;
-  touch-action: none; /* Prevents scrolling while dragging piece on touch */
+  outline-color: var(--yellow-color);
+  touch-action: none; /* Prevent scrolling on touch drag */
+  cursor: default; /* Default cursor */
 }
 
 .piece img {
@@ -184,86 +222,97 @@ main {
   height: 100%;
   display: block;
   object-fit: contain;
-  pointer-events: none;
+  pointer-events: none; /* Prevent interaction with image */
   border-radius: 50%;
 }
 
+/* --- Piece States & Interactions --- */
 .piece:focus {
-  /* No default outline, use .selected or specific focus style if needed */
+  outline: none; /* Remove default browser outline */
 }
 
-/* Custom focus for keyboard navigation */
 .piece:focus-visible {
-  outline: 3px solid var(--focus-outline);
+  outline: 3px solid var(--focus-outline); /* Accessible keyboard focus */
   outline-offset: 1px;
-  z-index: 15;
+  z-index: 15; /* Above other pieces */
 }
 
 .piece.dragging {
   opacity: 0.6;
-  cursor: grabbing !important; /* Override .movable */
-  z-index: 100;
-  transform: scale(1.1);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  cursor: grabbing !important; /* Force grabbing cursor */
+  z-index: 100; /* Highest layer */
+  transform: scale(1.1); /* Enlarge slightly */
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   transition: transform 0.15s ease-out, box-shadow 0.2s ease, outline 0.2s ease;
 }
 
 .piece.movable {
-  cursor: grab;
+  cursor: grab; /* Indicate draggable */
 }
 
 .piece.captured {
-  animation: capture-animation 0.4s ease-out forwards;
+  animation: capture-animation 0.4s ease-out forwards; /* Fade/shrink out */
 }
 
 @keyframes capture-animation {
-  0% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(0.5);
-    opacity: 0;
-  }
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.5); opacity: 0; }
 }
 
-/* --- Trap Rank Indicator Styling --- */
+.selected {
+  box-shadow: 0 0 0 4px var(--piece-select-glow); /* Gold selection glow */
+  z-index: 16; /* Above focus outline */
+}
+
+.hungry {
+  box-shadow: 0 0 0 4px var(--hungry-outline); /* Red hungry glow */
+  /* animation: hungry-pulse 1.5s infinite ease-in-out; */ /* Optional pulse */
+}
+
+/* ==========================================================================
+   5. Visual Feedback (Highlights, Indicators, Flashing)
+   ========================================================================== */
+
+/* --- Trap Rank Indicator --- */
 .trap-rank-indicator {
   position: absolute;
-  top: -2px;
-  left: 0;
-  width: 100%;
+  top: -3px; /* Position above piece */
+  left: 50%;
+  transform: translateX(-50%);
+  width: fit-content; /* Size to content */
+  min-width: 16px;
   text-align: center;
-  font-size: 0.75em;
+  font-size: 0.8em;
   font-weight: bold;
   color: white;
-  background-color: rgba(200, 0, 0, 0.75);
+  background-color: rgba(50, 50, 50, 0.8); /* Dark background */
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 3px;
-  padding: 0 2px;
-  z-index: 11; /* Above piece, below selection/focus */
+  padding: 1px 3px;
+  z-index: 11; /* Above piece image */
   pointer-events: none;
   display: none; /* Hidden by default */
   box-sizing: border-box;
   user-select: none;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
 }
 
 .trap-rank-indicator.visible {
   display: block;
 }
 
-/* --- Visual Feedback --- */
-/* Highlights for valid moves/attacks when selecting/dragging */
+/* --- Move/Attack Highlights on Cells --- */
 .valid-move {
   box-shadow: inset 0 0 0 3px var(--cell-highlight-move);
-  background-color: rgba(0, 255, 0, 0.1);
+  background-color: var(--cell-highlight-move-bg);
 }
 
 .valid-attack {
   box-shadow: inset 0 0 0 3px var(--cell-highlight-attack);
-  background-color: rgba(255, 0, 0, 0.1);
+  background-color: var(--cell-highlight-attack-bg);
 }
 
-/* Highlights for potential moves on hover (add/remove via JS) */
+/* --- Hover/Focus Dots on Cells --- */
 .valid-move-highlight::after,
 .valid-attack-highlight::after {
   content: "";
@@ -271,95 +320,52 @@ main {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 25%; /* Size of the dot */
+  width: 25%;
   height: 25%;
   border-radius: 50%;
   pointer-events: none;
   z-index: 1; /* Below pieces */
 }
 .valid-move-highlight::after {
-  background-color: rgba(0, 150, 0, 0.5); /* Green dot for move */
+  background-color: var(--cell-highlight-move-dot);
 }
 .valid-attack-highlight::after {
-  background-color: rgba(150, 0, 0, 0.5); /* Red dot for attack */
+  background-color: var(--cell-highlight-attack-dot);
 }
 
-/* Style for the selected piece */
-.selected {
-  /* outline: 3px solid var(--piece-select-glow); */
-  box-shadow: 0 0 0 3px var(--piece-select-glow); /* Blue glow */
-  z-index: 16;
-}
+/* --- Cell Flashing Animations --- */
+.flash-red { animation: flash-red-anim 0.3s ease-out; }
+.flash-green { animation: flash-green-anim 0.3s ease-out; }
 
-/* Style for hungry pieces */
-.hungry {
-  box-shadow: 0 0 0 3px var(--hungry-outline); /* Red 'glow' effect */
-  /* animation: hungry-pulse 1.5s infinite ease-in-out; */ /* Optional animation */
-}
-
-@keyframes hungry-pulse {
-  0% {
-    box-shadow: 0 0 0 3px var(--hungry-outline);
-  }
-  50% {
-    box-shadow: 0 0 0 5px rgba(255, 0, 0, 0.5);
-  }
-  100% {
-    box-shadow: 0 0 0 3px var(--hungry-outline);
-  }
-}
-
-/* Cell flashing feedback */
-.flash-red {
-  animation: flash-red-anim 0.3s ease-out;
-}
-.flash-green {
-  animation: flash-green-anim 0.3s ease-out;
-}
 @keyframes flash-red-anim {
-  0%,
-  100% {
-    background-color: transparent;
-  }
-  50% {
-    background-color: var(--flash-red-bg);
-  }
+  0%, 100% { background-color: transparent; }
+  50% { background-color: var(--flash-red-bg); }
 }
 @keyframes flash-green-anim {
-  0%,
-  100% {
-    background-color: transparent;
-  }
-  50% {
-    background-color: var(--flash-green-bg);
-  }
+  0%, 100% { background-color: transparent; }
+  50% { background-color: var(--flash-green-bg); }
 }
 
-/* --- Highlighting for Last Moves --- */
+/* --- Last Move Highlights --- */
 .last-move-from,
 .last-move-to {
   transition: background-color 0.3s ease-out;
 }
-/* Use distinct colors/styles for 'from' and 'to' */
-.last-move-from {
-  background-color: rgba(0, 0, 255, 0.1); /* Lighter blue for origin */
-}
-.last-move-to {
-  background-color: rgba(0, 0, 255, 0.25); /* Darker blue for destination */
-}
-/* Add player-specific classes if needed, but backgrounds might be sufficient */
-/* .orange-last-move {} */
-/* .yellow-last-move {} */
+.last-move-from { background-color: var(--ai-move-from-bg); }
+.last-move-to { background-color: var(--ai-move-to-bg); }
 
-/* --- UI Info Panel Styling --- */
+/* ==========================================================================
+   6. UI Info Panel (#ui-info-section)
+   ========================================================================== */
 #ui-info-section {
   width: var(--ui-max-width);
   max-width: 100%;
-  border: 1px solid var(--border-color);
+  border: 2px solid var(--panel-border);
   padding: 20px;
-  background-color: var(--secondary-bg);
-  height: fit-content;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  background-color: var(--panel-bg);
+  background-image: var(--wood-texture);
+  height: fit-content; /* Size to content */
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.25);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -368,164 +374,216 @@ main {
 
 #ui-info-section h2,
 #ui-info-section h3 {
+  font-family: var(--font-heading);
   margin-top: 0;
   margin-bottom: 15px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--jungle-light-tan);
   padding-bottom: 8px;
-  font-weight: 500;
-  color: var(--text-dark);
+  font-weight: 700;
+  color: var(--panel-heading-text);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 #ui-info-section h3 {
-  margin-top: 15px;
+  margin-top: 15px; /* Space above subheadings */
 }
 
-#ui-info-section p {
+/* --- Panel Text Content --- */
+#ui-info-section > p { /* Target direct paragraphs */
   margin: 10px 0;
   line-height: 1.5;
+  color: var(--jungle-parchment); /* Readable light text */
 }
 
 #turn-indicator {
   font-weight: 600;
-  padding: 3px 6px;
+  padding: 4px 8px;
   border-radius: 4px;
-  color: white;
-  display: inline-block; /* Prevents taking full width */
+  color: var(--jungle-text-dark); /* Dark text on player colors */
+  display: inline-block; /* Fit content width */
+  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-#turn-indicator.orange {
-  background-color: var(--orange-color);
-}
-#turn-indicator.yellow {
-  background-color: var(--yellow-color);
-  color: var(--dark-gray);
-}
+#turn-indicator.orange { background-color: var(--orange-color); }
+#turn-indicator.yellow { background-color: var(--yellow-color); }
 #turn-indicator.game-over {
   background-color: var(--error-color);
+  color: white; /* White text on error red */
 }
 
 #status-message {
-  min-height: 1.5em;
+  min-height: 1.5em; /* Prevent layout jumps */
   font-style: italic;
-  color: #555;
+  color: var(--jungle-parchment); /* Readable light text */
 }
 
-/* --- Clock Styling --- */
+/* ==========================================================================
+   7. Clocks
+   ========================================================================== */
 .clock-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 10px;
-  margin: 4px 0 8px 0;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background-color: #f0e8d1;
+  padding: 8px 12px;
+  margin: 6px 0 10px 0;
+  border: 1px solid var(--jungle-dark-brown);
+  border-radius: 6px;
+  background-color: rgba(62, 39, 35, 0.3); /* Dark transparent wood */
   transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 .clock-container.container-time-out {
-  /* Style for container when time is out */
   border-color: var(--error-color);
+  background-color: rgba(229, 57, 53, 0.2); /* Red tint on timeout */
 }
 
 .clock-label {
   font-weight: 500;
-  font-size: 0.9em;
+  font-size: 0.95em;
   margin-right: 10px;
-  color: var(--text-dark);
+  color: var(--jungle-light-tan);
 }
 
 .clock-time {
-  font-family: "Courier New", Courier, monospace;
-  font-size: 1.1em;
+  font-family: "Courier New", Courier, monospace; /* Monospace for time */
+  font-size: 1.2em;
   font-weight: bold;
-  padding: 2px 5px;
-  border-radius: 3px;
-  background-color: #e9e0c7;
-  color: var(--text-dark);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background-color: rgba(245, 245, 240, 0.8); /* Parchment background */
+  color: var(--jungle-text-dark);
   transition: background-color 0.3s ease, color 0.3s ease;
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .clock-time.time-out {
   color: var(--error-color);
-  background-color: #f8d7da; /* Light red background */
+  background-color: #f8d7da; /* Light red */
+  border-color: var(--error-color);
 }
 
 .clock-container.clock-active {
-  border-color: var(--text-dark);
-  background-color: #e9e0c7;
+  border-color: var(--yellow-color); /* Gold border */
+  background-color: rgba(62, 39, 35, 0.5); /* Darker wood */
 }
 
 #orange-clock-container.clock-active .clock-time {
   background-color: var(--orange-color);
-  color: white;
+  color: var(--jungle-text-dark);
+  border-color: var(--dark-orange);
 }
 #yellow-clock-container.clock-active .clock-time {
   background-color: var(--yellow-color);
-  color: var(--dark-gray);
+  color: var(--jungle-text-dark);
+  border-color: var(--dark-yellow);
 }
 
-/* --- Buttons --- */
+/* ==========================================================================
+   8. Controls & Buttons
+   ========================================================================== */
+
+/* --- Button Container --- */
 .button-container {
-  padding-top: 10px;
+  padding-top: 15px;
   margin-bottom: 15px;
   display: flex;
-  gap: 10px;
-  justify-content: space-around;
-  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between; /* Undo left, Reset right */
+  flex-wrap: nowrap; /* Keep on one line if possible */
 }
 
-.game-button {
-  padding: 10px 18px;
+/* --- General Button Styles --- */
+.game-button, .copy-button {
+  padding: 10px 20px;
   cursor: pointer;
-  border-radius: 5px;
-  border: none;
-  font-size: 0.95em;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
-  background-color: var(--button-default-bg);
-  color: var(--text-light);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  outline: none;
+  border-radius: 6px;
+  border: 1px solid var(--button-border);
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit; /* Use body font */
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+  background-color: var(--button-bg);
+  background-image: var(--wood-texture);
+  color: var(--button-text);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  outline-color: var(--yellow-color);
   margin-bottom: 5px;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-.game-button:hover {
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
-  background-color: var(--button-default-hover);
+.game-button:hover, .copy-button:hover {
+  box-shadow: 0 4px 7px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  background-color: var(--button-hover-bg);
+  transform: translateY(-1px); /* Subtle lift on hover */
+}
+.game-button:active, .copy-button:active {
+    transform: translateY(0px); /* Push down on click */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
-.game-button:focus-visible {
-  box-shadow: 0 0 0 3px var(--focus-outline);
+.game-button:focus-visible, .copy-button:focus-visible {
+  outline: 2px solid var(--focus-outline);
+  outline-offset: 2px;
 }
 
+/* --- Specific Buttons --- */
 #reset-button {
-  background-color: var(--button-default-bg);
+  background-color: var(--jungle-mid-green); /* Themed Green */
 }
 #reset-button:hover {
-  background-color: var(--button-default-hover);
+  background-color: #5a8c69; /* Darker themed green */
 }
 
 #undo-button {
-  background-color: #ffc107;
-  color: var(--dark-gray);
+  background-color: var(--yellow-color); /* Gold */
+  color: var(--jungle-text-dark);
 }
 #undo-button:hover {
-  background-color: #e0a800;
-}
-#undo-button:disabled {
-  background-color: var(--medium-gray);
-  cursor: not-allowed;
-  box-shadow: none;
+  background-color: var(--dark-yellow);
 }
 
-/* --- Audio Controls Styling --- */
+/* --- Disabled State --- */
+#undo-button:disabled, .copy-button:disabled {
+  background-color: var(--button-disabled-bg);
+  color: var(--button-disabled-text);
+  cursor: not-allowed;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  transform: none;
+  text-shadow: none;
+  background-image: none; /* Remove texture when disabled */
+}
+
+/* --- Copy Button Specifics --- */
+.copy-button {
+    display: block; /* Allow margin auto left */
+    width: auto; /* Size to content */
+    padding: 5px 15px;
+    margin-top: 10px;
+    margin-left: auto; /* Align right */
+    margin-right: 0;
+    font-size: 0.9em;
+}
+
+/* --- Load State Button --- */
+#load-state-button {
+    background-color: var(--jungle-mid-green); /* Match reset */
+}
+#load-state-button:hover {
+    background-color: #5a8c69;
+}
+
+/* ==========================================================================
+   9. Audio Controls
+   ========================================================================== */
 .audio-controls-container {
   display: flex;
   align-items: center;
-  padding: 10px 10px;
-  margin: 10px 0 5px 0;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  background-color: #f0e8d1;
+  justify-content: space-between; /* Space out music/SFX */
+  flex-wrap: nowrap; /* Try to keep on one line */
+  padding: 8px 10px;
+  margin: 15px 0 10px 0;
+  border: 1px solid var(--jungle-dark-brown);
+  border-radius: 6px;
+  background-color: rgba(62, 39, 35, 0.3); /* Match clock bg */
   gap: 15px;
 }
 
@@ -533,91 +591,94 @@ main {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex-shrink: 0; /* Prevent shrinking */
 }
 .music-control {
-  flex-grow: 1;
-  max-width: 135px;
-  overflow: hidden;
-  min-width: 0;
+    flex-grow: 1; /* Take available space */
+    min-width: 120px; /* Minimum width */
+    max-width: 160px; /* Maximum width */
 }
 .sfx-control {
-  flex-grow: 0;
-  flex-shrink: 0;
+    flex-grow: 0; /* Don't grow */
 }
+
 .control-icon {
-  font-size: 1.4em;
-  user-select: none;
-  line-height: 1;
-  flex-shrink: 0;
+    font-size: 1.5em;
+    user-select: none;
+    line-height: 1;
+    color: var(--jungle-light-tan);
+    filter: drop-shadow(1px 1px 1px rgba(0, 0, 0, 0.5)); /* Icon shadow */
 }
 
 #music-volume-slider {
   width: 100%;
   cursor: pointer;
-  accent-color: var(--orange-color);
+  accent-color: var(--orange-color); /* Slider theme color */
   height: 8px;
+  background: transparent;
+  appearance: none; -webkit-appearance: none;
 }
 #music-volume-slider::-webkit-slider-runnable-track {
-  background: #ddd;
+  background: rgba(245, 245, 240, 0.5); /* Parchment track */
   border-radius: 4px;
   height: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
 }
 #music-volume-slider::-moz-range-track {
-  background: #ddd;
+  background: rgba(245, 245, 240, 0.5);
   border-radius: 4px;
   height: 8px;
+   border: 1px solid rgba(0, 0, 0, 0.2);
 }
 #music-volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  background: var(--orange-color);
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px;
+  background: var(--orange-color); /* Player color thumb */
   border-radius: 50%;
-  margin-top: -4px;
+  margin-top: -6px; /* Vertically center */
+  border: 1px solid var(--dark-orange);
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
 }
 #music-volume-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 18px; height: 18px;
   background: var(--orange-color);
   border-radius: 50%;
-  border: none;
+  border: 1px solid var(--dark-orange);
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .volume-display {
-  font-size: 0.85em;
-  min-width: 35px;
+  font-size: 0.9em;
+  min-width: 35px; /* Ensure space for "100%" */
   text-align: right;
-  color: var(--text-dark);
+  color: var(--jungle-light-tan);
   font-family: monospace;
-  flex-shrink: 0;
 }
 
-/* Shared Switch Styling */
+/* ==========================================================================
+   10. Switches (SFX, PvP)
+   ========================================================================== */
 .switch {
   position: relative;
   display: inline-block;
-  width: 50px;
-  height: 24px;
+  width: 50px; /* Switch width */
+  height: 24px; /* Switch height */
   flex-shrink: 0;
 }
 .switch input {
-  opacity: 0;
+  opacity: 0; /* Hide checkbox */
   width: 0;
   height: 0;
 }
 .slider {
   position: absolute;
   cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--medium-gray);
+  inset: 0; /* Cover the label */
+  background-color: #7c4a4a; /* Dark red/brown off state */
   transition: 0.4s;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
 }
-.slider:before {
+.slider:before { /* The sliding knob */
   position: absolute;
   content: "";
   height: 18px;
@@ -626,156 +687,127 @@ main {
   bottom: 3px;
   background-color: white;
   transition: 0.4s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 input:checked + .slider:before {
-  transform: translateX(26px);
+  transform: translateX(26px); /* Move knob right */
 }
-.slider.round {
-  border-radius: 24px;
-}
-.slider.round:before {
-  border-radius: 50%;
-}
+.slider.round { border-radius: 24px; }
+.slider.round:before { border-radius: 50%; }
+
 input:focus-visible + .slider {
-  outline: var(--focus-outline);
+  outline: var(--focus-outline) solid 2px; /* Themed focus on slider */
   outline-offset: 1px;
 }
 
-/* SFX Specific Switch Colors */
+/* --- Specific Switch Colors --- */
 .sfx-switch input:checked + .slider {
-  background-color: var(--button-default-bg);
+  background-color: var(--jungle-mid-green); /* Green when SFX are ON */
+}
+#pvp-toggle:checked + .slider {
+  background-color: var(--orange-color); /* Orange when PvP is ON */
 }
 
-/* --- PvP Toggle Switch Styling --- */
+/* ==========================================================================
+   11. PvP Toggle Section
+   ========================================================================== */
 .pvp-toggle-container {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 8px 0;
+  margin: 10px 0;
   padding: 5px 0;
 }
 .pvp-label {
   margin-right: 10px;
   font-weight: 500;
   font-size: 0.95em;
+  color: var(--jungle-parchment); /* Readable light text */
 }
-#pvp-toggle:checked + .slider {
-  background-color: var(--orange-color);
-} /* PvP active color */
 
-/* PvP Info Icon & Tooltip */
 .switch-icon-wrapper {
   display: flex;
   align-items: center;
-  position: relative;
+  position: relative; /* For tooltip positioning */
 }
 .pvp-info-icon {
   display: inline-block;
   margin-left: 8px;
   cursor: help;
-  color: #007bff;
+  color: var(--jungle-light-tan);
   font-weight: bold;
-  font-size: 1.1em;
+  font-size: 1.2em;
   line-height: 1;
-  border-radius: 50%;
-  padding: 0 2px;
+  padding: 0 3px;
   vertical-align: middle;
 }
 .pvp-info-icon:focus {
-  outline: var(--focus-outline);
+  outline: var(--focus-outline) solid 2px;
   outline-offset: 1px;
 }
+
+/* PvP Info Tooltip */
 .tooltip-text {
   visibility: hidden;
   opacity: 0;
   position: absolute;
-  background-color: var(--text-dark);
-  color: var(--text-light);
+  background-color: var(--jungle-dark-brown); /* Themed background */
+  color: var(--jungle-text-light);
   text-align: center;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 5px;
-  z-index: 101;
-  font-size: 0.85em;
-  width: 180px;
-  bottom: 130%;
+  z-index: 101; /* Above most elements */
+  font-size: 0.9em;
+  width: 180px; /* Tooltip width */
+  bottom: 130%; /* Position above the icon */
   left: 50%;
   transform: translateX(-50%);
   transition: opacity 0.3s ease;
   pointer-events: none;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
 }
 .pvp-info-icon:hover + .tooltip-text,
 .pvp-info-icon:focus + .tooltip-text {
   visibility: visible;
   opacity: 1;
 }
-.tooltip-text::after {
+.tooltip-text::after { /* Tooltip arrow */
   content: "";
   position: absolute;
-  top: 100%;
+  top: 100%; /* Point down */
   left: 50%;
   transform: translateX(-50%);
-  border-width: 5px;
+  border-width: 6px;
   border-style: solid;
-  border-color: var(--text-dark) transparent transparent transparent;
+  border-color: var(--jungle-dark-brown) transparent transparent transparent;
 }
 
-/* --- Logs --- */
-.log-container { /* New container for log/state + button */
-    margin-bottom: 10px; /* Add some space between log/state sections */
-}
-
-.copy-button {
-    /* Remove previous full-width styling if any */
-    display: block; /* Change to block for margin auto left */
-    width: auto; /* Allow button to size to content */
-    padding: 4px 12px; /* Adjust padding */
-    margin-top: 8px; /* Space above button */
-    margin-left: auto; /* Align to the right */
-    margin-right: 0; /* Ensure no extra right margin */
-    font-size: 0.85em; /* Slightly smaller font */
-    cursor: pointer;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background-color: #f0f0f0;
-    transition: background-color 0.2s ease;
-}
-.copy-button:hover {
-    background-color: #e0e0e0;
-}
-.copy-button:active {
-    background-color: #d0d0d0;
-}
-.copy-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-    background-color: #f0f0f0;
+/* ==========================================================================
+   12. Logs (Move & Board State)
+   ========================================================================== */
+.log-container {
+  margin-bottom: 15px; /* Space between log sections */
 }
 
 #move-log,
 #board-state-log {
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--log-border);
     border-radius: 5px;
-    padding: 8px 10px;
-    /* Removed margin-top as it's handled by log-container */
-    background-color: var(--tertiary-bg);
+    padding: 10px 12px;
+    background-color: var(--log-bg);
+    background-image: var(--parchment-texture);
     line-height: 1.6;
     overflow-y: auto;
+    color: var(--log-text);
+    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.1);
 }
-#move-log {
-    height: 220px;
-    font-size: 0.9em;
-}
-#board-state-log {
-    max-height: 90px;
-    font-size: 0.75em;
-    font-family: monospace;
-    word-wrap: break-word;
-}
+#move-log { height: 220px; font-size: 0.9em; }
+#board-state-log { max-height: 90px; font-size: 0.75em; font-family: monospace; word-wrap: break-word; }
 
+/* --- Log Entries --- */
 .log-entry {
-  padding: 3px 0;
-  border-bottom: 1px dashed var(--medium-gray);
+  padding: 4px 0;
+  border-bottom: 1px dashed #c5ae9d; /* Dashed parchment separator */
 }
 .log-entry:last-child {
   border-bottom: none;
@@ -784,7 +816,7 @@ input:focus-visible + .slider {
   display: inline-block;
   width: 25px;
   font-weight: bold;
-  color: #6c757d;
+  color: #795548; /* Darker brown for turn number */
   margin-right: 5px;
   vertical-align: middle;
 }
@@ -792,26 +824,28 @@ input:focus-visible + .slider {
 .log-entry .log-yellow {
   display: inline-block;
   min-width: 60px;
-  padding: 2px 5px;
+  padding: 3px 6px;
   border-radius: 3px;
   margin: 0 3px;
   text-align: center;
   vertical-align: middle;
-  position: relative;
-  cursor: help;
+  position: relative; /* For potential future effects */
+  cursor: help; /* Indicate tooltip available */
+  font-weight: 500;
+  border: 1px solid;
 }
 .log-entry .log-orange {
-  background-color: rgba(230, 126, 34, 0.15);
-  color: var(--dark-orange);
-  border: 1px solid rgba(230, 126, 34, 0.3);
+  background-color: rgba(245, 124, 0, 0.15);
+  color: #bf360c; /* Darker orange text */
+  border-color: rgba(245, 124, 0, 0.4);
 }
 .log-entry .log-yellow {
-  background-color: rgba(241, 196, 15, 0.15);
-  color: #a87b00;
-  border: 1px solid rgba(241, 196, 15, 0.3);
+  background-color: rgba(255, 179, 0, 0.15);
+  color: #a0522d; /* Sienna/brown text */
+  border-color: rgba(255, 179, 0, 0.4);
 }
-.log-entry .placeholder {
-  color: var(--medium-gray);
+.log-entry .placeholder { /* For '...' */
+  color: #a1887f; /* Muted brown */
   font-style: italic;
   display: inline-block;
   min-width: 60px;
@@ -820,31 +854,34 @@ input:focus-visible + .slider {
   cursor: default;
 }
 .log-entry [data-tooltip]:focus-visible {
-  box-shadow: 0 0 0 2px var(--focus-outline);
+  box-shadow: 0 0 0 2px var(--focus-outline); /* Focus on log entry */
   outline: none;
 }
 
-/* Shared Tooltip for Move Log */
+/* ==========================================================================
+   13. Shared Tooltip (for Move Log & Pieces)
+   ========================================================================== */
 .shared-tooltip {
-  position: absolute;
-  background-color: rgba(50, 50, 50, 0.9);
-  color: var(--text-light);
+  position: absolute; /* Positioned by JS */
+  background-color: rgba(62, 39, 35, 0.95); /* Dark wood tooltip */
+  color: var(--jungle-text-light);
   padding: 8px 12px;
   border-radius: 5px;
   font-size: 0.9em;
   line-height: 1.4;
-  white-space: pre-line; /* Allow line breaks from \n */
+  white-space: pre-line; /* Respect newlines in content */
   word-wrap: break-word;
-  z-index: 1100;
+  z-index: 1100; /* Above most elements */
   max-width: 240px;
-  visibility: hidden;
-  opacity: 0;
+  visibility: hidden; /* Controlled by JS */
+  opacity: 0; /* Controlled by JS */
   transition: opacity 0.2s ease, visibility 0s linear 0.2s;
   pointer-events: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  display: block;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.4);
+  display: block; /* Needed for JS measurement */
   margin: 0;
   text-align: left;
+  border: 1px solid rgba(245, 245, 240, 0.3); /* Subtle light border */
 }
 .shared-tooltip[aria-hidden="false"] {
   visibility: visible;
@@ -852,181 +889,218 @@ input:focus-visible + .slider {
   transition-delay: 0s;
 }
 
-/* --- Load From State Section --- */
+/* --- Tooltip Icons (Rank/Power) --- */
+.tooltip-rank-icon,
+.tooltip-power-icon {
+    display: inline-block;
+    font-size: 1.25em;
+    vertical-align: middle;
+    line-height: 1;
+    filter: drop-shadow(1px 1px 0px rgba(0, 0, 0, 0.2)); /* Subtle depth */
+}
+
+/* ==========================================================================
+   14. Load From State Section
+   ========================================================================== */
 .load-state-container {
   margin-top: 15px;
-  border-top: 1px solid var(--border-color);
-  padding-top: 10px;
+  border-top: 1px solid var(--jungle-light-tan);
+  padding-top: 15px;
 }
 .load-state-container label {
   display: block;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
   font-weight: bold;
+  color: var(--panel-text);
+  font-family: var(--font-heading);
 }
 #board-state-input {
-  width: calc(100% - 12px);
-  padding: 6px;
-  margin-bottom: 8px;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
+  width: calc(100% - 12px); /* Full width minus padding */
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid var(--jungle-light-tan);
+  border-radius: 4px;
   box-sizing: border-box;
   transition: border-color 0.2s ease;
+  background-color: var(--jungle-light-tan); /* Light input background */
+  color: var(--jungle-text-dark);
+  font-family: monospace; /* Good for hash display */
 }
 #board-state-input.input-error {
-  border-color: var(--error-color);
+  border-color: var(--error-color); /* Red border on error */
 }
-#load-state-button {
-  background-color: var(--success-color);
+#board-state-input::placeholder {
+  color: #757575; /* Placeholder text color */
 }
+
+/* Load Status Message Styling */
 #load-status-message {
-  font-size: 0.85em;
-  color: #6c757d;
+  font-size: 0.9em;
   min-height: 1.2em;
-  margin-top: 5px;
+  margin-top: 8px;
+  font-weight: bold; /* Make status messages bold */
+  padding: 4px 8px; /* Add padding */
+  border-radius: 4px;
+  display: inline-block; /* Don't take full width */
+  border: 1px solid transparent; /* Base border */
 }
 #load-status-message.success {
   color: var(--success-color);
+  background-color: rgba(245, 245, 240, 0.85); /* Parchment background */
+  border-color: var(--success-color);
 }
 #load-status-message.error {
   color: var(--error-color);
+  background-color: rgba(245, 245, 240, 0.85); /* Parchment background */
+  border-color: var(--error-color);
 }
 
-/* --- Tooltip Icon Styling --- */
-.tooltip-rank-icon, /* Added selector */
-.tooltip-power-icon {
-    display: inline-block; /* Needed for potential vertical alignment */
-    font-size: 1.25em; /* Increase size */
-    vertical-align: middle; /* Align with text */
-    line-height: 1; /* Adjust line height if needed */
-}
-
-/* --- Debug Log Section Styling --- */
+/* ==========================================================================
+   15. Debug Log Section (Only visible if DEBUG_MODE = true)
+   ========================================================================== */
 #debug-log-container {
   width: 100%;
   max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px);
-  margin: 20px auto;
+  margin: 20px auto; /* Center below main content */
   padding: 15px;
-  background-color: var(--secondary-bg);
-  border: 1px solid var(--border-color);
+  background-color: var(--panel-bg); /* Match panel style */
+  background-image: var(--wood-texture);
+  border: 1px solid var(--panel-border);
   border-radius: 5px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
   box-sizing: border-box;
 }
 #debug-log-container h2 {
+  font-family: var(--font-heading);
   margin-top: 0;
   margin-bottom: 10px;
   font-weight: 500;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--jungle-light-tan);
   padding-bottom: 5px;
   font-size: 1.2em;
-  color: var(--text-dark);
+  color: var(--panel-heading-text);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
 }
 #debug-log-output {
-  height: 200px;
-  max-height: 40vh;
-  overflow-y: auto;
-  background-color: var(--tertiary-bg);
-  border: 1px solid var(--border-color);
+  height: 200px; /* Fixed height */
+  max-height: 40vh; /* Max height relative to viewport */
+  overflow-y: auto; /* Scrollbar if content overflows */
+  background-color: var(--log-bg); /* Match log style */
+  background-image: var(--parchment-texture);
+  border: 1px solid var(--log-border);
   border-radius: 3px;
-  padding: 8px;
+  padding: 10px;
   font-family: monospace;
   font-size: 0.8em;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre-wrap; /* Wrap long lines */
+  word-break: break-word; /* Break long words */
   line-height: 1.4;
-  color: var(--text-dark);
+  color: var(--log-text);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 .debug-log-entry {
   padding: 2px 0;
-  border-bottom: 1px dashed #e9ecef;
+  border-bottom: 1px dashed #d7ccc8; /* Separator */
 }
 .debug-log-entry:last-child {
   border-bottom: none;
 }
 .debug-log-timestamp {
-  color: #6c757d;
+  color: #795548; /* Dark brown timestamp */
   margin-right: 8px;
 }
 .debug-log-warn {
-  color: #fd7e14;
+  color: #ff8f00; /* Amber warning */
+  font-weight: bold;
 }
 .debug-log-error {
   color: var(--error-color);
   font-weight: bold;
 }
 .debug-hidden {
-  display: none;
+  display: none; /* Class to hide debug section */
 }
 #clear-debug-log {
   margin-top: 10px;
-  background-color: var(--error-color);
+  background-color: var(--error-color); /* Red clear button */
+}
+#clear-debug-log:hover {
+    background-color: #d32f2f; /* Darker red */
 }
 
-/* --- Rules Accordion Styling --- */
+/* ==========================================================================
+   16. Rules Accordion
+   ========================================================================== */
 #rules-accordion-container {
   width: 100%;
   max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px);
-  margin: 15px auto;
-  border: 1px solid var(--border-color);
-  border-radius: 5px;
-  overflow: hidden;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  margin: 20px auto; /* Space above/below */
+  border: 2px solid var(--panel-border); /* Match panel border */
+  border-radius: 8px;
+  overflow: hidden; /* Contain content */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
   box-sizing: border-box;
-  background-color: var(--secondary-bg);
+  background-color: var(--panel-bg); /* Match panel background */
+  background-image: var(--wood-texture);
 }
 .rules-toggle-button {
-  background-color: #e8e0c9;
-  color: var(--text-dark);
+  background-color: transparent; /* Use panel background */
+  color: var(--panel-heading-text);
   cursor: pointer;
-  padding: 12px 18px;
+  padding: 15px 20px;
   width: 100%;
   border: none;
+  border-bottom: 1px solid var(--panel-border); /* Separator */
   text-align: left;
-  outline: none;
-  font-size: 1.1em;
+  outline-color: var(--yellow-color);
+  font-size: 1.2em;
   transition: background-color 0.3s ease;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: 500;
+  font-weight: 700;
+  font-family: var(--font-heading);
   box-sizing: border-box;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
 }
 .rules-toggle-button:hover,
 .rules-toggle-button.active {
-  background-color: #dcd4b8;
+  background-color: rgba(0, 0, 0, 0.1); /* Darken slightly on hover/active */
 }
 .rules-toggle-button:focus-visible {
   box-shadow: 0 0 0 3px var(--focus-outline);
   z-index: 1;
-  position: relative;
+  position: relative; /* Ensure shadow is visible */
 }
-.rules-icon {
+.rules-icon { /* The +/- icon */
   font-size: 1.2em;
   font-weight: bold;
   transition: transform 0.3s ease;
 }
 .rules-toggle-button.active .rules-icon {
-  transform: rotate(45deg);
+  transform: rotate(45deg); /* Rotate to 'x' */
 }
 .rules-content {
-  padding: 0 18px;
-  background-color: var(--secondary-bg);
-  max-height: 0;
+  padding: 0 20px; /* No vertical padding when collapsed */
+  background-color: rgba(245, 245, 240, 0.9); /* Parchment rules area */
+  background-image: var(--parchment-texture);
+  max-height: 0; /* Collapsed state */
   overflow: hidden;
-  transition: max-height 0.3s ease-out, padding 0.3s ease-out;
-  border-top: 1px solid var(--border-color);
-  color: var(--text-dark);
+  transition: max-height 0.4s ease-out, padding 0.4s ease-out;
+  color: var(--jungle-text-dark); /* Dark text for rules */
 }
 .rules-content.expanded {
-  padding: 15px 18px; /* max-height set by JS */
+  padding: 20px 20px; /* Padding when expanded */
+  /* max-height is set by JS */
 }
 .rules-content h3 {
+  font-family: var(--font-heading);
   margin-top: 15px;
-  margin-bottom: 8px;
-  color: var(--text-dark);
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 4px;
+  margin-bottom: 10px;
+  color: var(--jungle-text-dark);
+  font-weight: 700;
+  border-bottom: 1px solid var(--log-border);
+  padding-bottom: 6px;
 }
 .rules-content h3:first-child {
   margin-top: 0;
@@ -1034,17 +1108,17 @@ input:focus-visible + .slider {
 .rules-content h4 {
   margin-top: 12px;
   margin-bottom: 5px;
-  color: #5a5a5a;
+  color: #6d4c41; /* Darker brown sub-subheading */
 }
 .rules-content p,
 .rules-content ul,
 .rules-content ol {
-  margin-bottom: 10px;
-  line-height: 1.6;
+  margin-bottom: 12px;
+  line-height: 1.65; /* Improved readability */
 }
 .rules-content ul,
 .rules-content ol {
-  padding-left: 25px;
+  padding-left: 25px; /* Indentation for lists */
 }
 .rules-content ul ul,
 .rules-content ol ol,
@@ -1053,14 +1127,17 @@ input:focus-visible + .slider {
   margin-bottom: 5px;
 }
 .rules-content li {
-  margin-bottom: 5px;
+  margin-bottom: 6px;
 }
 .rules-content strong {
-  font-weight: 600;
+  font-weight: 700;
+  color: #5d4037; /* Dark brown emphasis */
 }
 
-/* Utility class */
-.visually-hidden {
+/* ==========================================================================
+   17. Utility Classes
+   ========================================================================== */
+.visually-hidden { /* For accessibility */
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1071,99 +1148,49 @@ input:focus-visible + .slider {
   border: 0;
 }
 
-/* --- Mobile Responsiveness --- */
+/* ==========================================================================
+   18. Media Queries (Responsiveness)
+   ========================================================================== */
 @media (max-width: 950px) {
-  /* Adjusted breakpoint */
-  body {
-    padding: 5px;
-  }
-  h1 {
-    font-size: 1.5em;
-    margin-bottom: 10px;
-  }
-  main {
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-    padding: 0 5px;
-    max-width: 100%;
-  }
-  #board {
-    width: 95vw;
-    max-width: var(--board-max-width);
-    order: 1;
-    padding: 4.5% 4.3%; /* Keep relative padding */
-  }
-  #ui-info-section {
-    width: 95vw;
-    max-width: var(--board-max-width);
-    order: 2;
-  }
-  #move-log {
-    height: 150px;
-  }
-  #board-state-log {
-    max-height: 60px;
-  }
-  .copy-button { /* Ensure right alignment persists */
-      margin-left: auto;
-      margin-right: 0;
-  }
+  body { padding: 5px; }
+  h1 { font-size: 1.6em; margin-bottom: 10px; }
+  main { flex-direction: column; align-items: center; gap: 20px; padding: 0 5px; max-width: 100%; }
+  #board { width: 95vw; max-width: var(--board-max-width); order: 1; padding: 4.5% 4.3%; }
+  #ui-info-section { width: 95vw; max-width: var(--board-max-width); order: 2; }
+  #move-log { height: 180px; }
+  #board-state-log { max-height: 70px; }
   .button-container {
-    padding-top: 10px;
+    flex-wrap: wrap; /* Allow buttons to wrap */
+    justify-content: space-around;
   }
-  .game-button {
-    padding: 8px 12px;
-    font-size: 0.9em;
-  }
-  #debug-log-container {
-    margin-top: 15px;
-    width: 95vw;
-    max-width: var(--board-max-width);
-    order: 4;
-  }
-  #debug-log-output {
-    height: 150px;
-  }
-  #rules-accordion-container {
-    width: 95vw;
-    max-width: var(--board-max-width);
-    order: 3;
-  } /* Rules below UI */
+  .game-button { padding: 9px 15px; font-size: 0.95em; }
+  #debug-log-container { margin-top: 15px; width: 95vw; max-width: var(--board-max-width); order: 4; }
+  #debug-log-output { height: 160px; }
+  #rules-accordion-container { width: 95vw; max-width: var(--board-max-width); order: 3; }
   .audio-controls-container {
-    flex-wrap: wrap;
-  } /* Allow audio controls to wrap */
+      flex-wrap: wrap; /* Allow audio controls to wrap */
+      justify-content: space-evenly;
+  }
   .music-control {
-    max-width: none;
-    min-width: 200px;
-  } /* Allow music slider more space */
+      max-width: none; /* Allow slider more space */
+  }
+  .copy-button { margin-left: auto; margin-right: 0; } /* Ensure alignment */
 }
 
-@media (max-width: 400px) {
-  /* Further adjustments for very small screens if needed */
-  h1 {
-    font-size: 1.3em;
-  }
-  .clock-container {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
+@media (max-width: 480px) {
+  h1 { font-size: 1.4em; }
+  .clock-container { flex-direction: column; align-items: flex-start; gap: 3px; }
   .button-container {
-    justify-content: center;
+    justify-content: center; /* Center stacked buttons */
   }
   .game-button {
-    width: 45%;
+    width: 46%; /* Stack buttons nicely */
     text-align: center;
-  } /* Stack buttons */
-  #move-log {
-    height: 120px;
   }
-  #board-state-log {
-    max-height: 40px;
-  }
-  .copy-button { /* Ensure right alignment persists */
-      margin-left: auto;
-      margin-right: 0;
-  }
+  #move-log { height: 150px; }
+  #board-state-log { max-height: 60px; }
+  .rules-toggle-button { font-size: 1.1em; padding: 12px 15px; }
+  .rules-content { padding: 0 15px; }
+  .rules-content.expanded { padding: 15px 15px; }
+  .copy-button { margin-left: auto; margin-right: 0; } /* Ensure alignment */
 }

@@ -166,7 +166,7 @@ const MIN_TIME_PER_MOVE = 500;
  * If elapsed time > timeLimit * factor, stop deepening early.
  * @type {number}
  */
-const TIME_PREDICTION_FACTOR = 0.6; // Stop if > 60% of time is used
+const TIME_PREDICTION_FACTOR = 0.9; // Stop if > 90% of time is used
 
 // --- Transposition Table ---
 /**
@@ -252,7 +252,7 @@ const EVAL_MATERIAL_MULT = 1.2;
  * Base material values assigned to each piece rank.
  * @type {Object.<number, number>}
  */
-const EVAL_PIECE_VALUES = { 1: 30, 2: 10, 3: 30, 4: 25, 5: 40, 6: 60, 7: 100, 8: 70 }; // Keep Lion high! Wolf increased slightly.
+const EVAL_PIECE_VALUES = { 1: 35, 2: 10, 3: 30, 4: 20, 5: 40, 6: 60, 7: 95, 8: 75 }; // Keep Lion high! Wolf increased slightly.
 
 /** Penalty applied if a piece is on an opponent's trap AND immediately capturable by a weaker piece. @type {number} */
 const EVAL_IMMEDIATE_TRAP_DOOM_PENALTY = -130000; // Almost as bad as losing
@@ -276,9 +276,9 @@ const DEN_PROXIMITY_RANK_SCALE_FACTOR = 0.5;
 
 // Specific QSearch Bonuses (Keep high to encourage den pressure checks)
 /** Bonus applied in Quiescence search if a Lion is adjacent to the opponent's den. @type {number} */
-const QSEARCH_LION_ADJACENT_DEN_BONUS = 2000;
+const QSEARCH_LION_ADJACENT_DEN_BONUS = 0;
 /** Bonus applied in Quiescence search if a Lion is near (2 steps) the opponent's den. @type {number} */
-const QSEARCH_LION_NEAR_DEN_BONUS = 1000;
+const QSEARCH_LION_NEAR_DEN_BONUS = 0;
 
 // Threat Multipliers
 /** Bonus multiplier (applied to victim's value) for threatening an opponent piece. @type {number} */
@@ -352,7 +352,7 @@ const VICTIM_MULTIPLIER = 10;
 
 // --- Clock Constants ---
 /** Initial time allocated to each player in seconds. @type {number} */
-const INITIAL_TIME_SECONDS = 10 * 60; // 10 minutes
+const INITIAL_TIME_SECONDS = 5 * 60; // 5 minutes
 /** Time increment in seconds added to a player's clock after making a move. @type {number} */
 const INCREMENT_SECONDS = 2; // 2 seconds bonus
 

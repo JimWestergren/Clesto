@@ -788,12 +788,15 @@ function clearHighlights() {
 
 /**
  * Highlights valid move and attack squares for a given piece, using bitboard data and validation.
+ * Generates potential moves for the specific piece and validates each one using `isValidMoveBB`.
  * Adds temporary highlight classes ('valid-move-highlight', 'valid-attack-highlight')
  * and, if `isSelection` is true, applies persistent visual styles ('valid-move', 'valid-attack').
- * Depends on: clearHighlights, getPieceData, isValidMoveBB (gameLogic.js),
- *             coordToBitIndex (bitboardUtils.js), getPieceTypeIndex (utils.js),
- *             getAllValidMovesBB (gameLogic.js), getCellElementId, getPieceElementId,
- *             gameState (gameState.js). Needs boardGridWrapper element.
+ * Depends on: clearHighlights, getPieceData (gameState.js), isValidMoveBB (gameLogic.js),
+ *             coordToBitIndex, bitIndexToCoord, lsbIndex, clearBit, setBit, // bitboardUtils.js
+ *             checkJumpPathClearBB, waterBB, orangeDenBB, yellowDenBB, // bitboardUtils.js
+ *             getPieceTypeIndex (utils.js), getCellElementId, getPieceElementId,
+ *             gameState (gameState.js), SPECIAL_ABILITIES, PLAYERS, BB_IDX, SQUARES, COLS, ROWS (constants.js).
+ * Needs boardGridWrapper element.
  *
  * @param {string} fromCoords - The coordinates of the piece whose moves to highlight.
  * @param {boolean} [isSelection=true] - If true, apply persistent styles (for click/drag selection).
@@ -815,7 +818,6 @@ function highlightValidMoves(fromCoords, isSelection = true) {
         return;
     }
 
-
     const fromIndex = coordToBitIndex(fromCoords);
     const movingPieceTypeIndex = getPieceTypeIndex(piece.player, piece.rank);
     if (fromIndex === -1 || movingPieceTypeIndex === -1) {
@@ -823,47 +825,105 @@ function highlightValidMoves(fromCoords, isSelection = true) {
         return;
     }
 
-    // --- Use getAllValidMovesBB for efficiency ---
-    // Note: getAllValidMovesBB gives PSEUDO-LEGAL moves. We still need full validation.
-    const pseudoMoves = getAllValidMovesBB(gameState.bitboards, gameState.currentPlayer, true); // Get moves for current player
+    // --- Generate potential moves for the selected piece ONLY ---
+    let targetSquaresBB = BB_EMPTY; // BB of potential destinations
+    const rank = piece.rank;
+    const abilities = SPECIAL_ABILITIES[rank];
+    if (!abilities) {
+        console.error(`highlightValidMoves Error: Missing abilities for rank ${rank}`);
+        return;
+    }
 
-    // Filter moves originating from the selected piece
-    const destinations = pseudoMoves
-        .filter(move => move.from === fromCoords)
-        .map(move => move.to); // Get only the 'to' coordinates
+    const isSwimmer = abilities.swims || false;
+    const canJumpV = abilities.jumpV || false;
+    const canJumpH = abilities.jumpH || false;
+    const isFromLand = getBit(waterBB, fromIndex) === 0n;
+    const ownPiecesBB = gameState.bitboards[piece.player === PLAYERS.ORANGE ? BB_IDX.ORANGE_PIECES : BB_IDX.YELLOW_PIECES];
+    const ownDenBB = piece.player === PLAYERS.ORANGE ? orangeDenBB : yellowDenBB;
+    const pieceBB = 1n << BigInt(fromIndex);
 
-    destinations.forEach(toCoords => {
-        const cell = document.getElementById(getCellElementId(toCoords));
-        if (!cell) return; // Skip if cell not found
+    // Orthogonal Moves
+    let potentialOrthoTargets = BB_EMPTY;
+    const fromRow = Math.floor(fromIndex / COLS);
+    const fromCol = fromIndex % COLS;
+    if (fromRow > 0) potentialOrthoTargets |= (pieceBB >> BigInt(COLS));      // North
+    if (fromRow < ROWS - 1) potentialOrthoTargets |= (pieceBB << BigInt(COLS)); // South
+    if (fromCol > 0) potentialOrthoTargets |= (pieceBB >> 1n);             // West
+    if (fromCol < COLS - 1) potentialOrthoTargets |= (pieceBB << 1n);             // East
+    potentialOrthoTargets &= ~ownPiecesBB; // Cannot move onto own pieces
+    potentialOrthoTargets &= ~ownDenBB;    // Cannot move into own den
+    if (!isSwimmer) potentialOrthoTargets &= ~waterBB; // Non-swimmers cannot enter water
+    targetSquaresBB |= potentialOrthoTargets;
 
-        const toIndex = coordToBitIndex(toCoords);
-        if (toIndex === -1) return; // Skip if target coords are invalid
-
-        // Validate the move fully using isValidMoveBB
-        const validation = isValidMoveBB(fromIndex, toIndex, movingPieceTypeIndex, gameState.currentPlayer, gameState.bitboards);
-
-        // --- TEMPORARY DEBUG LOG ---
-        // --- END TEMP DEBUG ---
-
-
-        if (validation.valid) {
-            // Check if target square is occupied by opponent
-            const targetPiece = getPieceData(toCoords); // Reads global gameState.bitboards
-            const isAttack = targetPiece && targetPiece.player !== piece.player;
-
-            cell.classList.add('valid-move-highlight'); // Base highlight for any valid move
-            if (isAttack) {
-                cell.classList.add('valid-attack-highlight'); // Specific class for attacks
-                if (isSelection) cell.classList.add('valid-attack'); // Persistent style if selecting
-            } else {
-                if (isSelection) cell.classList.add('valid-move'); // Persistent style if selecting
-            }
-            cell.setAttribute('tabindex', '0'); // Make valid destinations focusable by keyboard
-        } else {
-            // Ensure invalid moves remain non-focusable
-            cell.setAttribute('tabindex', '-1');
+    // Jump Moves
+    if (isFromLand) {
+        let potentialJumpTargets = BB_EMPTY;
+        // Vertical Jumps
+        if (canJumpV && (fromCol === 1 || fromCol === 2 || fromCol === 4 || fromCol === 5)) {
+            if (fromIndex >= 4 * COLS) potentialJumpTargets |= (pieceBB >> BigInt(4 * COLS)); // Jump North
+            if (fromIndex < SQUARES - (4 * COLS)) potentialJumpTargets |= (pieceBB << BigInt(4 * COLS)); // Jump South
         }
-    });
+        // Horizontal Jumps
+        if (canJumpH && (fromRow >= 3 && fromRow <= 5)) {
+            if (fromCol >= 3) potentialJumpTargets |= (pieceBB >> 3n); // Jump West
+            if (fromCol <= COLS - 1 - 3) potentialJumpTargets |= (pieceBB << 3n); // Jump East
+        }
+        potentialJumpTargets &= ~ownPiecesBB; // Cannot jump onto own pieces
+        potentialJumpTargets &= ~ownDenBB;    // Cannot jump into own den
+        potentialJumpTargets &= ~waterBB;     // Jumps must land on land
+
+        // Check jump path clear for each potential jump target
+        let validJumpTargets = BB_EMPTY;
+        let tempJumpTargets = potentialJumpTargets;
+        while(tempJumpTargets !== BB_EMPTY) {
+            const jumpTargetIdx = lsbIndex(tempJumpTargets);
+            if (jumpTargetIdx !== -1 && jumpTargetIdx < SQUARES) {
+                 // Use the selected piece's player for the jump path check
+                 if (checkJumpPathClearBB(fromIndex, jumpTargetIdx, piece.player, gameState.bitboards)) {
+                     validJumpTargets = setBit(validJumpTargets, jumpTargetIdx);
+                 }
+            } else { break; } // Invalid index or board empty
+            tempJumpTargets = clearBit(tempJumpTargets, jumpTargetIdx);
+        }
+        targetSquaresBB |= validJumpTargets; // Add only the valid jumps
+    }
+    // --- End generating potential moves ---
+
+    // --- Iterate through potential targets and validate using isValidMoveBB ---
+    let currentTargets = targetSquaresBB;
+    while (currentTargets !== BB_EMPTY) {
+        const toIndex = lsbIndex(currentTargets);
+        if (toIndex === -1 || toIndex >= SQUARES) {
+            console.warn(`highlightValidMoves: Invalid LSB index ${toIndex} from target BB.`);
+            break; // Prevent infinite loop on error
+        }
+        const toCoords = bitIndexToCoord(toIndex);
+        const cell = document.getElementById(getCellElementId(toCoords));
+
+        if (cell && toCoords) {
+            // Validate the move fully using isValidMoveBB for the CURRENT player
+            const validation = isValidMoveBB(fromIndex, toIndex, movingPieceTypeIndex, gameState.currentPlayer, gameState.bitboards);
+
+            if (validation.valid) {
+                // Check if target square is occupied by opponent
+                const targetPiece = getPieceData(toCoords); // Reads global gameState.bitboards
+                const isAttack = targetPiece && targetPiece.player !== piece.player;
+
+                cell.classList.add('valid-move-highlight'); // Base highlight for any valid move
+                if (isAttack) {
+                    cell.classList.add('valid-attack-highlight'); // Specific class for attacks
+                    if (isSelection) cell.classList.add('valid-attack'); // Persistent style if selecting
+                } else {
+                    if (isSelection) cell.classList.add('valid-move'); // Persistent style if selecting
+                }
+                cell.setAttribute('tabindex', '0'); // Make valid destinations focusable by keyboard
+            } else {
+                // Ensure invalid moves remain non-focusable
+                cell.setAttribute('tabindex', '-1');
+            }
+        }
+        currentTargets = clearBit(currentTargets, toIndex);
+    }
 
     // If this is a selection (not just hover), mark the source piece as selected
     if (isSelection) {
