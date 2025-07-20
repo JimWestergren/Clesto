@@ -29,6 +29,8 @@ let isDragging = false;
 let isLoadStateInputFocused = false;
 /** @type {number|null} Timeout ID for the shared tooltip hide delay. */
 let tooltipHideTimeout = null;
+/** @type {number|null} Timeout ID for the piece info tooltip show delay. */
+let pieceTooltipTimeoutId = null;
 /** @type {{x: number, y: number}} Stores initial touch coordinates for drag calculation. */
 let touchStartCoords = { x: 0, y: 0 }; // Renamed from touchStartX/Y
 
@@ -1665,10 +1667,10 @@ function handleCopyLogClick() {
 
     const logEntries = moveLogElement.querySelectorAll('.log-entry');
     if (logEntries.length === 0) {
-        copyLogButton.textContent = "Log Empty 📋";
+        copyLogButton.textContent = "Log Empty"; // Updated feedback text
         copyLogButton.disabled = true;
         setTimeout(() => {
-            copyLogButton.textContent = "Copy Log 📋";
+            copyLogButton.textContent = "Copy"; // Reset text
             copyLogButton.disabled = false;
         }, 1500);
         return;
@@ -1684,13 +1686,13 @@ function handleCopyLogClick() {
     if (!navigator.clipboard) {
         console.error("Clipboard API not available. Cannot copy.");
         copyLogButton.textContent = "Copy Failed";
-        setTimeout(() => { copyLogButton.textContent = "Copy Log 📋"; }, 2000);
+        setTimeout(() => { copyLogButton.textContent = "Copy"; }, 2000); // Reset text
         return;
     }
 
     // Use the Clipboard API to write the text
     navigator.clipboard.writeText(formattedLogText).then(() => {
-        const originalText = "Copy Log 📋";
+        const originalText = "Copy"; // Updated default text
         copyLogButton.textContent = "Copied! ✅"; // Use checkmark for success
         copyLogButton.disabled = true;
         setTimeout(() => {
@@ -1700,7 +1702,7 @@ function handleCopyLogClick() {
     }).catch(err => {
         console.error('Failed to copy move log: ', err);
         copyLogButton.textContent = "Copy Failed ❌"; // Use cross mark for error
-        setTimeout(() => { copyLogButton.textContent = "Copy Log 📋"; }, 2000);
+        setTimeout(() => { copyLogButton.textContent = "Copy"; }, 2000); // Reset text
     });
 }
 
@@ -1719,10 +1721,10 @@ function handleCopyStateClick() {
     const stateString = fullText.replace(/^Hash:\s*/, '').trim();
 
     if (!stateString || stateString === 'N/A') {
-        copyStateButton.textContent = "State Empty 📋";
+        copyStateButton.textContent = "State Empty"; // Updated feedback text
         copyStateButton.disabled = true;
         setTimeout(() => {
-            copyStateButton.textContent = "Copy Board State 📋";
+            copyStateButton.textContent = "Copy"; // Reset text
             copyStateButton.disabled = false;
         }, 1500);
         return;
@@ -1731,13 +1733,13 @@ function handleCopyStateClick() {
     if (!navigator.clipboard) {
         console.error("Clipboard API not available. Cannot copy.");
         copyStateButton.textContent = "Copy Failed";
-        setTimeout(() => { copyStateButton.textContent = "Copy Board State 📋"; }, 2000);
+        setTimeout(() => { copyStateButton.textContent = "Copy"; }, 2000); // Reset text
         return;
     }
 
     // Use the Clipboard API to write the text
     navigator.clipboard.writeText(stateString).then(() => {
-        const originalText = "Copy Board State 📋";
+        const originalText = "Copy"; // Updated default text
         copyStateButton.textContent = "Copied! ✅";
         copyStateButton.disabled = true;
         setTimeout(() => {
@@ -1747,7 +1749,7 @@ function handleCopyStateClick() {
     }).catch(err => {
         console.error('Failed to copy board state hash: ', err);
         copyStateButton.textContent = "Copy Failed ❌";
-        setTimeout(() => { copyStateButton.textContent = "Copy Board State 📋"; }, 2000);
+        setTimeout(() => { copyStateButton.textContent = "Copy"; }, 2000); // Reset text
     });
 }
 
@@ -1756,10 +1758,10 @@ function handleCopyStateClick() {
 
 /**
  * Shows the shared tooltip positioned near the target element with the specified content.
- * Handles multiline content using CSS `white-space: pre-line`.
+ * Handles multiline content and allows HTML rendering for elements like icons.
  * Depends on: sharedMoveTooltip element, tooltipHideTimeout.
  * @param {HTMLElement} targetElement - The element triggering the tooltip (e.g., the move span or piece).
- * @param {string} content - The string content to display in the tooltip (can include '\n').
+ * @param {string} content - The string content (potentially containing HTML) to display in the tooltip.
  */
 function showSharedTooltip(targetElement, content) {
     if (!targetElement || !sharedMoveTooltip || !content) {
@@ -1773,8 +1775,10 @@ function showSharedTooltip(targetElement, content) {
         tooltipHideTimeout = null;
     }
 
-    // Set text and calculate position
-    sharedMoveTooltip.textContent = content; // Set the raw string content
+    // *** Use innerHTML to render the span correctly ***
+    sharedMoveTooltip.innerHTML = content; // Set the HTML content
+    // *** ------------------------------------------ ***
+
     sharedMoveTooltip.style.display = 'block'; // Use display block for measurement
     sharedMoveTooltip.style.visibility = 'hidden'; // Keep hidden while calculating size/pos
     sharedMoveTooltip.style.opacity = '0';
@@ -1899,7 +1903,8 @@ function initializeDOMElements() {
  *             pauseAllClocks, resumeClockForCurrentPlayer, playTurnSound (main.js),
  *             updateAllPieceAccessibility, updateUndoButtonState, showSharedTooltip, hideSharedTooltip,
  *             generatePieceInfoTooltipContent (utils.js), generateMoveDescription (utils.js), // Still needed for addLogEntryToDOM
- *             logToPanel (debug.js), soundEffectsEnabled, backgroundMusicElement (audio.js).
+ *             logToPanel (debug.js), soundEffectsEnabled, backgroundMusicElement (audio.js),
+ *             pieceTooltipTimeoutId (ui.js). // Added pieceTooltipTimeoutId
  *             Needs various DOM elements referenced globally in ui.js.
  */
 function setupEventListeners() {
@@ -2039,14 +2044,12 @@ function setupEventListeners() {
         if (moveLogElement) {
             moveLogElement.addEventListener('mouseover', (event) => {
                 const target = event.target.closest('[data-tooltip]');
-                // *** FIX: Use dataset.tooltip directly for content ***
                 if (target && target.dataset.tooltip) {
                     showSharedTooltip(target, target.dataset.tooltip);
                 }
             });
             moveLogElement.addEventListener('focusin', (event) => {
                 const target = event.target.closest('[data-tooltip]');
-                // *** FIX: Use dataset.tooltip directly for content ***
                 if (target && target.dataset.tooltip) {
                     showSharedTooltip(target, target.dataset.tooltip);
                 }
@@ -2060,40 +2063,66 @@ function setupEventListeners() {
             });
         } else { console.warn("Move log element not found for tooltips."); }
 
-        // For Piece Info
+        // For Piece Info (with delay)
         if (boardGridWrapper) {
-            boardGridWrapper.addEventListener('mouseover', (event) => {
-                const target = event.target.closest('.piece');
+            const showPieceTooltip = (target) => {
                 if (target && target.dataset.rank) {
                     const rank = parseInt(target.dataset.rank, 10);
                     const content = generatePieceInfoTooltipContent(rank);
                     if (content) showSharedTooltip(target, content);
+                }
+            };
+
+            const startPieceTooltipTimer = (target) => {
+                 if (pieceTooltipTimeoutId) clearTimeout(pieceTooltipTimeoutId); // Clear existing timer
+                 pieceTooltipTimeoutId = setTimeout(() => {
+                     showPieceTooltip(target);
+                     pieceTooltipTimeoutId = null; // Clear ID after showing
+                 }, 1500); // 1.5 second delay
+            };
+
+            const cancelPieceTooltipTimer = () => {
+                 if (pieceTooltipTimeoutId) {
+                     clearTimeout(pieceTooltipTimeoutId);
+                     pieceTooltipTimeoutId = null;
+                 }
+                 hideSharedTooltip(); // Hide immediately on mouseout/focusout
+            };
+
+            boardGridWrapper.addEventListener('mouseover', (event) => {
+                const target = event.target.closest('.piece');
+                if (target) {
+                    startPieceTooltipTimer(target);
                 }
             });
             boardGridWrapper.addEventListener('focusin', (event) => {
                 const target = event.target.closest('.piece');
-                if (target && target.dataset.rank) {
-                    const rank = parseInt(target.dataset.rank, 10);
-                    const content = generatePieceInfoTooltipContent(rank);
-                    if (content) showSharedTooltip(target, content);
-                }
+                 if (target) {
+                    startPieceTooltipTimer(target);
+                 }
             });
             boardGridWrapper.addEventListener('mouseout', (event) => {
                 const target = event.target.closest('.piece');
-                if (target) hideSharedTooltip();
+                if (target) {
+                     cancelPieceTooltipTimer();
+                }
             });
             boardGridWrapper.addEventListener('focusout', (event) => {
                 const target = event.target.closest('.piece');
                 // Hide if focus moves outside the board wrapper entirely
                 if (target && !boardGridWrapper.contains(event.relatedTarget)) {
-                    hideSharedTooltip();
+                    cancelPieceTooltipTimer();
                 }
             });
         } else { console.warn("Board grid wrapper not found for piece tooltips.") }
 
         // Global listener to hide tooltip on Escape key
         document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') { hideSharedTooltip(); }
+            if (event.key === 'Escape') {
+                 if (pieceTooltipTimeoutId) clearTimeout(pieceTooltipTimeoutId); // Clear timer on escape
+                 pieceTooltipTimeoutId = null;
+                 hideSharedTooltip();
+            }
         });
 
     } else { console.warn("Shared tooltip element not found. Tooltips disabled."); }

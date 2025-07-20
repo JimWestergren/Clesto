@@ -288,12 +288,13 @@ function generateAttackMaps(bitboards) {
  *             popcount, getBit, lsbIndex, bitIndexToCoord, coordToBitIndex, allTrapsBB, waterBB (bitboardUtils.js),
  *             generateAttackMapsBB (bitboardUtils.js),
  *             getPieceData (gameState.js), getRowCol (utils.js), getAllValidMovesBB (gameLogic.js),
+ *             isValidMoveBB, // <-- Added dependency
  *             gameState (for hungryBB).
  *             Global bitboard state from bitboardUtils.js (centerColsBB, orangeAdvanceBB, etc.).
  *
  * @param {bigint[]} bitboards - The bitboard array state.
  * @param {string} playerForMax - The player considered "maximizing" (the perspective for the returned score).
- * @returns {number} A numerical score. Higher is better for playerForMax. Clamped.
+ * @returns {number} A numerical score. Higher is better for playerForMax. Clamped & Finite.
  */
 function evaluateBoardBB(bitboards, playerForMax) {
     // --- Evaluation Terms ---
@@ -319,7 +320,7 @@ function evaluateBoardBB(bitboards, playerForMax) {
     // --- Basic Validation ---
     if (!bitboards || bitboards.length !== BB_IDX.COUNT || (playerForMax !== PLAYERS.ORANGE && playerForMax !== PLAYERS.YELLOW)) {
         console.error(`[${fnName} Error] Invalid bitboards array or playerForMax provided.`);
-        return EVAL_LOSE_SCORE + 10;
+        return EVAL_LOSE_SCORE + 10; // Return a penalty score
     }
 
     const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
@@ -327,8 +328,10 @@ function evaluateBoardBB(bitboards, playerForMax) {
     const minDenCoord = DENS[opponent]; // Opponent's den
     const maxTrapsBB = playerForMax === PLAYERS.ORANGE ? yellowTrapBB : orangeTrapBB; // Traps affecting opponent
 
-    const maxHungryBB = gameState.hungryBB?.[playerForMax] ?? BB_EMPTY;
-    const minHungryBB = gameState.hungryBB?.[opponent] ?? BB_EMPTY;
+    // Safely access hungryBB, defaulting to empty if undefined/null
+    const maxHungryBB = gameState?.hungryBB?.[playerForMax] ?? BB_EMPTY;
+    const minHungryBB = gameState?.hungryBB?.[opponent] ?? BB_EMPTY;
+
 
     // --- Generate Attack Maps ---
     let playerAttackMapBB = BB_EMPTY;
@@ -338,6 +341,7 @@ function evaluateBoardBB(bitboards, playerForMax) {
         opponentAttackMapBB = generateAttackMapsBB(bitboards, opponent);
     } catch (e) {
         console.error(`[${fnName} Error] Generating attack maps:`, e);
+        // Continue evaluation with empty maps, but score will be less accurate
     }
 
     // --- Collect Piece Data & Check Immediate Den Wins ---
@@ -364,6 +368,7 @@ function evaluateBoardBB(bitboards, playerForMax) {
                 const lsb = lsbIndex(tempBB);
                 if (lsb === -1) break;
 
+                // Check hungry state using safely accessed global state
                 const isHungry = (player === playerForMax) ? (getBit(maxHungryBB, lsb) !== 0n) : (getBit(minHungryBB, lsb) !== 0n);
 
                 // Check immediate win/loss by non-hungry piece entering den
@@ -375,7 +380,7 @@ function evaluateBoardBB(bitboards, playerForMax) {
                 const rc = getRowCol(coords);
                 if (!rc) { tempBB = clearBit(tempBB, lsb); continue; }
 
-                piecesData[player][coords] = { rank: rank, rc: rc, isHungry: isHungry, index: lsb }; // Store index too
+                piecesData[player][coords] = { rank: rank, rc: rc, isHungry: isHungry, index: lsb };
 
                 if (player === playerForMax) { maxPieceCountTotal++; maxMaterial += pieceValue; }
                 else { minPieceCountTotal++; minMaterial += pieceValue; }
@@ -391,12 +396,14 @@ function evaluateBoardBB(bitboards, playerForMax) {
 
     // --- Apply Material Score ---
     score += (maxMaterial - minMaterial) * EVAL_MATERIAL_MULT;
+    if (!Number.isFinite(score)) { console.warn(`[${fnName}] Score non-finite after Material.`); score = 0; }
+
 
     // --- Evaluate Threats/Safety & Trap Doom ---
-    // (Logic from previous step - checking losing captures, trap doom, standard threats)
     try {
         let totalThreatPenalty = 0;
-        let isPlayerForMaxDoomedOnTrap = false;
+        let totalAttackingBonus = 0;
+        let isPlayerForMaxDoomedOnTrap = false; // Not used, can remove if desired
 
         // Iterate through playerForMax's pieces to check their safety
         for (const myCoords in piecesData[playerForMax]) {
@@ -412,20 +419,19 @@ function evaluateBoardBB(bitboards, playerForMax) {
              if (isAttacked) {
                  let isLosingCaptureImminent = false;
                  let isDoomedOnTrap = false;
-                 const isOnTrap = getBit(maxTrapsBB, myIndex) !== 0n; // Is my piece on a trap that affects opponent? (Incorrect check here, should be trap affecting ME)
-                 // Correction: Check trap affecting playerForMax
                  const playerTrapBB = playerForMax === PLAYERS.ORANGE ? orangeTrapBB : yellowTrapBB;
                  const isOnMyTrap = getBit(playerTrapBB, myIndex) !== 0n;
 
-                 let opponentValidMoves = null; // Lazy generation
+                 let opponentValidMoves = null;
                  const getOpponentMoves = () => {
                      if (opponentValidMoves === null) {
-                         opponentValidMoves = getAllValidMovesBB(bitboards, opponent, true);
+                         try { opponentValidMoves = getAllValidMovesBB(bitboards, opponent, true); }
+                         catch (e) { console.error(`[${fnName}] Error getting opponent moves:`, e); opponentValidMoves = []; }
                      }
                      return opponentValidMoves;
                  };
 
-                 // A. Check for immediate *losing* captures
+                 // A. Check for immediate *losing* captures (Opponent attacks me)
                  for (const oppMove of getOpponentMoves()) {
                      if (oppMove.to === myCoords) {
                          const attackerRank = (oppMove.pieceTypeIndex % 8) + 1;
@@ -435,29 +441,32 @@ function evaluateBoardBB(bitboards, playerForMax) {
 
                          const oppFromIdx = coordToBitIndex(oppMove.from);
                          if (oppFromIdx === -1) continue;
+
+                         // Validate the move thoroughly
                          const captureValidation = isValidMoveBB(oppFromIdx, myIndex, oppMove.pieceTypeIndex, opponent, bitboards);
 
                          if (captureValidation.valid && !isRatVsElephant && (attackerWinsRank || isElephantVsRat)) {
-                             score -= myValue * 1.8;
+                             score -= myValue * 1.8; // Significant penalty
                              isLosingCaptureImminent = true;
                              break;
                          }
                      }
                  }
 
-                 // B. Check for immediate trap doom
-                 // Corrected: Check if piece is on a trap that makes *it* weak (playerTrapBB)
-                 if (!isLosingCaptureImminent && isOnMyTrap) { // Use isOnMyTrap
+                 // B. Check for immediate trap doom (Opponent attacks me on my trap with lower rank)
+                 if (!isLosingCaptureImminent && isOnMyTrap) {
                       for (const oppMove of getOpponentMoves()) {
                           if (oppMove.to === myCoords) {
                               const attackerRank = (oppMove.pieceTypeIndex % 8) + 1;
                               const oppFromIdx = coordToBitIndex(oppMove.from);
                               if (oppFromIdx === -1) continue;
+
                               const trapCaptureValidation = isValidMoveBB(oppFromIdx, myIndex, oppMove.pieceTypeIndex, opponent, bitboards);
 
                               // Doom requires valid capture by a *strictly lower* original rank attacker
-                              if (trapCaptureValidation.valid && attackerRank < myRank) {
-                                   score += EVAL_IMMEDIATE_TRAP_DOOM_PENALTY;
+                              // (isValidMove handles trap rank reduction implicitly)
+                              if (trapCaptureValidation.valid) { // && attackerRank < myRank -> This check is wrong because isValidMove already checks effective rank
+                                   score += EVAL_IMMEDIATE_TRAP_DOOM_PENALTY; // Very large penalty
                                    isDoomedOnTrap = true;
                                    isPlayerForMaxDoomedOnTrap = true;
                                    break;
@@ -466,7 +475,7 @@ function evaluateBoardBB(bitboards, playerForMax) {
                       }
                  }
 
-                 // C. Apply standard threat penalties
+                 // C. Apply standard threat penalties if not immediately losing/doomed
                  if (!isLosingCaptureImminent && !isDoomedOnTrap) {
                      totalThreatPenalty += EVAL_THREATENED_PENALTY_MULT * myValue;
                      const isDefended = getBit(playerAttackMapBB, myIndex) !== 0n;
@@ -478,9 +487,10 @@ function evaluateBoardBB(bitboards, playerForMax) {
         } // End loop through playerForMax pieces
 
         score -= totalThreatPenalty;
+        if (!Number.isFinite(score)) { console.warn(`[${fnName}] Score non-finite after Threat Penalty.`); score = 0; }
+
 
         // Attacks made by playerForMax: Bonus for threatening opponent pieces
-        let totalAttackingBonus = 0;
         const opponentPiecesBB = bitboards[opponent === PLAYERS.ORANGE ? BB_IDX.ORANGE_PIECES : BB_IDX.YELLOW_PIECES];
         let threatenedOpponentBB = playerAttackMapBB & opponentPiecesBB;
         while (threatenedOpponentBB !== BB_EMPTY) {
@@ -496,6 +506,8 @@ function evaluateBoardBB(bitboards, playerForMax) {
              threatenedOpponentBB = clearBit(threatenedOpponentBB, lsb);
         }
         score += totalAttackingBonus;
+        if (!Number.isFinite(score)) { console.warn(`[${fnName}] Score non-finite after Attacking Bonus.`); score = 0; }
+
 
     } catch (e) { console.error(`[${fnName} Error] During threat/trap check:`, e); }
 
@@ -512,8 +524,8 @@ function evaluateBoardBB(bitboards, playerForMax) {
         const minDenRC = getRowCol(minDenCoord); // Opponent's den location
         const maxDenRC = getRowCol(maxDenCoord); // Player's den location
 
-        // Den Proximity Checks (including immediate threats)
-        if (minDenRC) { // Evaluating player's proximity to opponent's den
+        // Den Proximity Checks
+        if (minDenRC) { // Player attacking opponent den
              for (const coords in piecesData[playerForMax]) {
                  if (!Object.prototype.hasOwnProperty.call(piecesData[playerForMax], coords)) continue;
                  const item = piecesData[playerForMax][coords];
@@ -522,14 +534,12 @@ function evaluateBoardBB(bitboards, playerForMax) {
                  const pieceIndex = item.index;
                  const dist = Math.abs(item.rc.row - minDenRC.row) + Math.abs(item.rc.col - minDenRC.col);
 
-                 if (!item.isHungry) { // Only non-hungry pieces score for den proximity/attack
+                 if (!item.isHungry) {
                       if (dist === 1) { // Adjacent
-                           // HUGE bonus if the opponent CANNOT capture this adjacent piece
                            const isSafe = getBit(opponentAttackMapBB, pieceIndex) === 0n;
                            if (isSafe) {
                                score += EVAL_SAFE_DEN_ATTACK_BONUS;
                            } else {
-                               // Normal adjacent bonus (scaled)
                                score += EVAL_DEN_ADJACENT_BASE_BONUS * (1 + (DEN_PROXIMITY_RANK_SCALE_FACTOR * (pieceValue / 100)));
                            }
                       } else if (dist === 2) { // Nearby
@@ -539,7 +549,7 @@ function evaluateBoardBB(bitboards, playerForMax) {
              }
         }
 
-        if (maxDenRC) { // Evaluating opponent's proximity to player's den
+        if (maxDenRC) { // Opponent attacking player den
              for (const coords in piecesData[opponent]) {
                   if (!Object.prototype.hasOwnProperty.call(piecesData[opponent], coords)) continue;
                   const item = piecesData[opponent][coords];
@@ -548,14 +558,11 @@ function evaluateBoardBB(bitboards, playerForMax) {
                   const pieceIndex = item.index;
                   const dist = Math.abs(item.rc.row - maxDenRC.row) + Math.abs(item.rc.col - maxDenRC.col);
 
-                  // Opponent doesn't need to be non-hungry to be a threat
                   if (dist === 1) { // Adjacent
-                      // HUGE penalty if player CANNOT capture this adjacent opponent piece
                       const isThreatUnanswered = getBit(playerAttackMapBB, pieceIndex) === 0n;
                       if (isThreatUnanswered) {
                            score += EVAL_UNANSWERED_DEN_THREAT_PENALTY;
                       } else {
-                           // Normal adjacent penalty (scaled)
                            score += EVAL_OPP_DEN_ADJACENT_BASE_PENALTY * (1 + (DEN_PROXIMITY_RANK_SCALE_FACTOR * (pieceValue / 100)));
                       }
                   } else if (dist === 2) { // Nearby
@@ -563,15 +570,18 @@ function evaluateBoardBB(bitboards, playerForMax) {
                   }
              }
         }
+        if (!Number.isFinite(score)) { console.warn(`[${fnName}] Score non-finite after Positional.`); score = 0; }
+
     } catch (e) { console.error(`[${fnName} Error] During positional check:`, e); }
 
+
     // --- Evaluate Water Control ---
-    // (Same as before)
     try {
         const friendlyRatIdx = playerForMax === PLAYERS.ORANGE ? O_RAT_IDX : Y_RAT_IDX;
         const friendlyDogIdx = playerForMax === PLAYERS.ORANGE ? O_DOG_IDX : Y_DOG_IDX;
         const opponentRatIdx = playerForMax === PLAYERS.ORANGE ? Y_RAT_IDX : O_RAT_IDX;
         const opponentDogIdx = playerForMax === PLAYERS.ORANGE ? Y_DOG_IDX : O_DOG_IDX;
+        // Safe access to bitboards
         const friendlyRatBB = bitboards[friendlyRatIdx] ?? BB_EMPTY;
         const friendlyDogBB = bitboards[friendlyDogIdx] ?? BB_EMPTY;
         const opponentRatBB = bitboards[opponentRatIdx] ?? BB_EMPTY;
@@ -582,23 +592,32 @@ function evaluateBoardBB(bitboards, playerForMax) {
             const opponentSwimmersInWaterBB = (opponentRatBB | opponentDogBB) & waterBB;
             score += popcount(friendlySwimmersInWaterBB) * EVAL_WATER_CONTROL_BONUS;
             score += popcount(opponentSwimmersInWaterBB) * EVAL_OPP_WATER_CONTROL_PENALTY;
+             if (!Number.isFinite(score)) { console.warn(`[${fnName}] Score non-finite after Water Control.`); score = 0; }
         } else { console.warn(`[${fnName} Warn] waterBB not available for water control evaluation.`); }
     } catch(e) { console.error(`[${fnName} Error] During water control check:`, e); }
 
+
     // --- Hungry State Evaluation ---
-    // (Same as before)
     const maxHungryCount = popcount(maxHungryBB);
     const minHungryCount = popcount(minHungryBB);
     if (minHungryCount > 1) score += EVAL_MULTI_HUNGRY_BONUS;
-    if (maxHungryCount > 1) score -= (EVAL_MULTI_HUNGRY_BONUS * 2);
+    if (maxHungryCount > 1) score -= (EVAL_MULTI_HUNGRY_BONUS * 2); // Penalize own multi-hungry more
     else if (maxHungryCount === 1) score += EVAL_SINGLE_HUNGRY_PENALTY;
+    if (!Number.isFinite(score)) { console.warn(`[${fnName}] Score non-finite after Hungry State.`); score = 0; }
 
     // --- Final Clamping and Return ---
+    // Ensure score is finite before clamping
     if (!Number.isFinite(score)) {
-        console.warn(`[${fnName} Warn] Score non-finite (${score}) before clamp. Resetting.`);
+        console.error(`[${fnName} FATAL] Score became non-finite (${score}) before final clamp. Returning 0.`);
         score = 0;
     }
     const finalScore = Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, score));
+
+    // Final check just before return
+    if (!Number.isFinite(finalScore)) {
+        console.error(`[${fnName} FATAL] Final score is non-finite (${finalScore}) after clamp. Returning 0.`);
+        return 0;
+    }
     return finalScore;
 }
 
@@ -1069,7 +1088,7 @@ function searchBB(depth, bitboards, currentPlayer, currentHash, isGameOver, winn
  * Uses the Negamax search function (`searchBB`) internally.
  * Handles potentially large scores, clamping, and non-finite scores.
  * Includes check for immediate wins before starting search.
- * Returns an ordered list of evaluated root moves.
+ * Returns an ordered list of evaluated root moves, with stable sorting for ties.
  * Depends on: transpositionTable global (write), EVAL_WIN_SCORE, EVAL_LOSE_SCORE,
  *             EVAL_MATED_SCORE_THRESHOLD, TT_ENTRY_TYPE (constants.js), searchBB, simulateMoveBB,
  *             getAllValidMovesBB, getOrderedMovesBB, findImmediateWinningMove, evaluateBoardBB.
@@ -1080,11 +1099,12 @@ function searchBB(depth, bitboards, currentPlayer, currentHash, isGameOver, winn
  * @param {bigint} rootHash - The Zobrist hash of the root state.
  * @param {boolean} rootGameOver - Is the game already over at the root?
  * @param {string|null} rootWinner - Who won if game is over?
- * @returns {{moves: Array<{move: object|null, score: number}>}|null} A list of root moves ordered by score (best first), or null on critical error.
- *          Returns { moves: [{ move: null, score: number }] } if game over or stalemate detected at root.
+ * @returns {{moves: Array<{move: object|null, score: number, originalIndex: number}>}|null} A list of root moves ordered by score (best first),
+ *          including original index for stable sorting. Returns null on critical error.
+ *          Returns { moves: [{ move: null, score: number, originalIndex: -1 }] } if game over or stalemate.
  */
 function findBestMoveMinimaxBB(depth, rootBitboards, playerForMax, rootHash, rootGameOver, rootWinner) {
-    let evaluatedRootMoves = []; // Store { move, score } pairs
+    let evaluatedRootMoves = []; // Store { move, score, originalIndex } tuples
     let alpha = -Infinity;
     let beta = Infinity;
 
@@ -1097,47 +1117,45 @@ function findBestMoveMinimaxBB(depth, rootBitboards, playerForMax, rootHash, roo
         let score = 0; // Default draw
         if (rootWinner === playerForMax) score = EVAL_WIN_SCORE;
         else if (rootWinner !== null) score = EVAL_LOSE_SCORE;
-        return { moves: [{ move: null, score: score }] }; // No move to make
+        return { moves: [{ move: null, score: score, originalIndex: -1 }] }; // No move to make
     }
 
     // --- Get and Order Root Moves ---
     let possibleMoves = [];
     try {
-        possibleMoves = getAllValidMovesBB(rootBitboards, playerForMax, true); // Use simulation flag
+        possibleMoves = getAllValidMovesBB(rootBitboards, playerForMax, true);
         if (possibleMoves.length === 0) {
             // Stalemate or Checkmate at the root
-            return { moves: [{ move: null, score: EVAL_MATED_SCORE_THRESHOLD }] };
+            return { moves: [{ move: null, score: EVAL_MATED_SCORE_THRESHOLD, originalIndex: -1 }] };
         }
         // Order moves using TT hint from previous iterations if available
         const rootTTEntry = transpositionTable.get(rootHash.toString());
         const ttBestMoveHint = rootTTEntry?.bestMove || null;
+        // Get ordered moves based on heuristics (TT, Captures, Killers, History)
         possibleMoves = getOrderedMovesBB(rootBitboards, ttBestMoveHint, 0, possibleMoves, playerForMax); // Ply 0 at root
 
     } catch (e) {
         console.error(`[findBestMoveMinimaxBB D${depth}] Error getting/ordering root moves:`, e);
-        return null; // Cannot proceed without moves
+        return null;
     }
 
     // --- Evaluate Each Root Move ---
+    // Store the original index *after* the initial heuristic ordering
     for (let i = 0; i < possibleMoves.length; i++) {
         const move = possibleMoves[i];
         if (!move || !move.from || !move.to || typeof move.pieceTypeIndex !== 'number') continue;
 
         let scoreForThisMove;
-        let isTracedMove = enableTracing && move.from === TRACE_MOVE.from && move.to === TRACE_MOVE.to;
+        let isTracedMove = enableTracing && typeof TRACE_MOVE !== 'undefined' && move.from === TRACE_MOVE.from && move.to === TRACE_MOVE.to;
 
         try {
-            // Simulate the move
             const simResult = simulateMoveBB(rootBitboards, playerForMax, rootHash, move);
             if (!simResult) {
-                // console.log(`[findBestMoveMinimaxBB D${depth}] Simulation returned null for move ${move.from}->${move.to} (illegal move pruned).`);
-                scoreForThisMove = EVAL_LOSE_SCORE - 1; // Assign very low score for pruned illegal moves
+                scoreForThisMove = EVAL_LOSE_SCORE - 1;
             } else {
                 const { nextBitboards, nextPlayer, nextHash, nextGameOver, nextWinner } = simResult;
-
-                // --- Manage History ---
-                 const nextHashKey = nextHash.toString();
-                 gameState.boardStateHistory[nextHashKey] = (gameState.boardStateHistory[nextHashKey] || 0) + 1;
+                const nextHashKey = nextHash.toString();
+                gameState.boardStateHistory[nextHashKey] = (gameState.boardStateHistory[nextHashKey] || 0) + 1;
 
                 const originalTraceState = enableTracing;
                 if (isTracedMove) {
@@ -1145,72 +1163,81 @@ function findBestMoveMinimaxBB(depth, rootBitboards, playerForMax, rootHash, roo
                     enableTracing = true;
                 }
 
-                // Call the recursive search (Negamax)
                 scoreForThisMove = -searchBB(depth - 1, nextBitboards, nextPlayer, nextHash, nextGameOver, nextWinner, -beta, -alpha, playerForMax, 1);
 
-                // --- Restore History ---
-                 gameState.boardStateHistory[nextHashKey]--;
-                 if (gameState.boardStateHistory[nextHashKey] <= 0) {
-                     delete gameState.boardStateHistory[nextHashKey];
-                 }
+                gameState.boardStateHistory[nextHashKey]--;
+                if (gameState.boardStateHistory[nextHashKey] <= 0) {
+                    delete gameState.boardStateHistory[nextHashKey];
+                }
 
                 if (isTracedMove) {
                     enableTracing = originalTraceState;
                 }
 
                 if (!Number.isFinite(scoreForThisMove)) {
+                     console.warn(`[findBestMoveMinimaxBB D${depth}] Search returned non-finite score for ${move.from}->${move.to}. Setting to EVAL_LOSE_SCORE.`);
                     scoreForThisMove = EVAL_LOSE_SCORE;
                 }
             }
 
-        } catch (e) { // Catch errors specifically from simulate or search call
+        } catch (e) {
             console.error(`[findBestMoveMinimaxBB D${depth}] Error during simulation or searchBB call for move ${move.from}->${move.to}:`, e);
             if (e instanceof Error) { console.error("Stack:", e.stack); }
-            if (isTracedMove) enableTracing = false;
+            if (isTracedMove) enableTracing = false; // Ensure tracing is turned off on error
             scoreForThisMove = EVAL_LOSE_SCORE;
         }
 
-        // Check for Cancellation AFTER the search call returns
         if (searchCancelled) {
-             // If cancelled, return the moves evaluated *so far*, ordered.
-             evaluatedRootMoves.sort((a, b) => b.score - a.score); // Sort what we have
-             return { moves: evaluatedRootMoves.length > 0 ? evaluatedRootMoves : null }; // Return sorted list or null if none evaluated
+             // Apply stable sort to what we have before returning due to cancellation
+             evaluatedRootMoves.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return a.originalIndex - b.originalIndex; // Stable tie-breaker
+             });
+             return { moves: evaluatedRootMoves.length > 0 ? evaluatedRootMoves : null };
         }
 
-        // Store the evaluated move and its score
-        evaluatedRootMoves.push({ move: move, score: scoreForThisMove });
+        // Store the evaluated move, its score, AND its original index from the ordered list
+        evaluatedRootMoves.push({ move: move, score: scoreForThisMove, originalIndex: i });
 
-        // Update alpha (best score found so far for the maximizing player at the root)
         alpha = Math.max(alpha, scoreForThisMove);
 
-        // Beta cutoff check (less relevant at root for finding the *best* move, but standard)
+        // Beta cutoff check (less relevant at root for finding *all* ordered moves)
         // if (alpha >= beta) { break; }
 
     } // End root move loop
 
     // --- Post-Search ---
 
-    // Sort all evaluated moves by score (descending)
-    evaluatedRootMoves.sort((a, b) => b.score - a.score);
+    // Sort all evaluated moves stably
+    evaluatedRootMoves.sort((a, b) => {
+        // Primary sort: score descending
+        if (b.score !== a.score) {
+            return b.score - a.score;
+        }
+        // Secondary sort (tie-breaker): original index ascending
+        // Moves considered earlier in the heuristically ordered list come first in case of a tie.
+        return a.originalIndex - b.originalIndex;
+    });
+
 
     // Store the best move found at this depth in TT if it exists
     if (evaluatedRootMoves.length > 0) {
         const bestMoveFound = evaluatedRootMoves[0].move;
         const bestScoreFound = evaluatedRootMoves[0].score;
         let scoreForStorage = bestScoreFound;
-        if (scoreForStorage > EVAL_MATE_SCORE_THRESHOLD) scoreForStorage += 0; // Adjust mate scores for ply 0
+        // Adjust mate scores relative to root (ply 0)
+        if (scoreForStorage > EVAL_MATE_SCORE_THRESHOLD) scoreForStorage += 0;
         else if (scoreForStorage < EVAL_MATED_SCORE_THRESHOLD) scoreForStorage -= 0;
 
         const existing = transpositionTable.get(rootHash.toString());
-        if (!existing || depth >= existing.depth) { // Store if deeper or same depth (overwrite less accurate/older entries)
+        if (!existing || depth >= existing.depth) {
              if (Number.isFinite(scoreForStorage)) {
                  transpositionTable.set(rootHash.toString(), { depth: depth, score: scoreForStorage, type: TT_ENTRY_TYPE.EXACT, bestMove: bestMoveFound });
              }
         }
     } else {
         console.warn(`[findBestMoveMinimaxBB D${depth}] No root moves were successfully evaluated.`);
-         // This might happen if all moves failed simulation or search; return indicates no valid move found.
-         return { moves: [{ move: null, score: EVAL_LOSE_SCORE }] };
+         return { moves: [{ move: null, score: EVAL_LOSE_SCORE, originalIndex: -1 }] };
     }
 
     return { moves: evaluatedRootMoves };
@@ -1224,12 +1251,11 @@ function findBestMoveMinimaxBB(depth, rootBitboards, playerForMax, rootHash, roo
  * Initializes search state, calculates time limits, runs the search iteratively,
  * dynamically adjusts depth based on piece count, enforces a minimum search depth,
  * uses a pre-emptive time check, handles results, manages the AI clock,
- * validates the final chosen move *against repetition rules*, and triggers the chosen move or fallback.
+ * validates the final chosen move *against repetition rules using final hash*, and triggers the chosen move or fallback.
  * Includes check for immediate winning move before starting search.
  * Depends on: initializeAISearchState, findImmediateWinningMove, popcount, getPieceCountsBB,
- *             findBestMoveMinimaxBB, performFallbackMove, isValidMoveBB (gameLogic.js),
- *             simulateMoveBB, // <-- Added simulateMoveBB dependency for repetition check
- *             getRestrictedPlayer, // <-- Added dependency
+ *             findBestMoveMinimaxBB, performFallbackMove, isValidMoveBB, getFinalHashAfterMoveBB, // <-- Added getFinalHashAfterMoveBB dependency
+ *             getRestrictedPlayer,
  *             coordToBitIndex (bitboardUtils.js), getPieceTypeIndex (utils.js),
  *             timeLimit, searchStartTime, searchCancelled globals,
  *             PLAYERS, MIN_TIME_PER_MOVE, TIME_USAGE_FACTOR, TIME_PREDICTION_FACTOR,
@@ -1256,7 +1282,7 @@ function triggerAIMove() {
             yellowTime -= elapsedSeconds;
             if (yellowTime < 0) yellowTime = 0;
             updateClockDisplay(PLAYERS.YELLOW, yellowTime);
-            performMove(immediateWin.from, immediateWin.to); // Assumes performMove in main scope
+            performMove(immediateWin.from, immediateWin.to);
             return;
         }
     } catch (winCheckError) {
@@ -1285,14 +1311,20 @@ function triggerAIMove() {
     maxDepthForThisSearch = Math.max(maxDepthForThisSearch, MIN_FORCED_DEPTH);
 
     // --- Iterative Deepening Loop ---
-    let bestMovesListOverall = []; // Store the list from the last completed depth
-    let bestScoreOverall = -Infinity; // Store the score of the top move
+    let bestMovesListOverall = [];
+    let bestScoreOverall = -Infinity;
     let lastCompletedDepth = 0;
     const rootBitboards = gameState.bitboards;
     const rootHash = gameState.zobristHash;
     const rootGameOver = gameState.gameOver;
     const rootWinner = gameState.winner;
     const playerForMaxID = player;
+    // Capture initial hungry state for accurate repetition check simulation
+    const initialHungryBBForRepCheck = {
+        [PLAYERS.ORANGE]: gameState.hungryBB[PLAYERS.ORANGE],
+        [PLAYERS.YELLOW]: gameState.hungryBB[PLAYERS.YELLOW]
+    };
+
 
     for (let currentDepth = 1; currentDepth <= maxDepthForThisSearch; currentDepth++) {
         let allowMateScoreStop = currentDepth >= MIN_FORCED_DEPTH;
@@ -1302,32 +1334,29 @@ function triggerAIMove() {
                 searchCancelled = true;
                 break;
             }
+            // Pass initial hungry state for accurate hashing within search if needed? (Already using global gameState...)
             const result = findBestMoveMinimaxBB(currentDepth, rootBitboards, playerForMaxID, rootHash, rootGameOver, rootWinner);
 
-            if (searchCancelled) break; // Check cancellation *after* search returns
+            if (searchCancelled) break;
 
             if (result && result.moves && result.moves.length > 0) {
-                // Successfully got a list of moves
-                bestMovesListOverall = result.moves; // Update with the latest list
-                bestScoreOverall = result.moves[0].score; // Score of the top move
+                bestMovesListOverall = result.moves;
+                bestScoreOverall = result.moves[0].score;
                 lastCompletedDepth = currentDepth;
 
-                // Stop checks (mate score, time limit) based on the *best* score found
                 if (allowMateScoreStop && Math.abs(bestScoreOverall) > EVAL_MATE_SCORE_THRESHOLD) break;
                 if (timeLimit > 0 && performance.now() - searchStartTime >= timeLimit) { searchCancelled = true; break; }
 
             } else if (result && result.moves && result.moves.length === 1 && result.moves[0].move === null) {
-                // Search detected stalemate/checkmate at the root
-                bestMovesListOverall = result.moves; // Store the result { move: null, score: ... }
+                bestMovesListOverall = result.moves;
                 bestScoreOverall = result.moves[0].score;
                 lastCompletedDepth = currentDepth;
-                if (allowMateScoreStop && bestScoreOverall < EVAL_MATED_SCORE_THRESHOLD) break; // Stop if checkmated
+                if (allowMateScoreStop && bestScoreOverall < EVAL_MATED_SCORE_THRESHOLD) break;
                 if (timeLimit > 0 && performance.now() - searchStartTime >= timeLimit) { searchCancelled = true; break; }
 
             } else {
-                // Search returned null or an empty moves list - indicates an error or unexpected state
                 console.warn(`ID Warning: Invalid result object or empty moves list returned from search at depth ${currentDepth}. Using previous depth's result.`);
-                break; // Stop deepening if search fails
+                break;
             }
         } catch (e) {
             console.error(`>>> ID LOOP CAUGHT ERROR at currentDepth = ${currentDepth} <<<`, e);
@@ -1355,52 +1384,57 @@ function triggerAIMove() {
     if (bestMovesListOverall.length > 0 && bestMovesListOverall[0].move !== null) {
         console.log(`AI considering moves from depth ${lastCompletedDepth}. Top score: ${bestScoreOverall.toFixed(0)}`);
 
-        // Iterate through the ordered list of moves from the search
         for (const evaluatedMove of bestMovesListOverall) {
             const candidateMove = evaluatedMove.move;
             if (!candidateMove || !candidateMove.from || !candidateMove.to || typeof candidateMove.pieceTypeIndex !== 'number') {
-                continue; // Skip invalid move objects in the list
+                continue;
             }
 
-            // 1. Basic Validity Check (should already be valid from search, but double-check)
+            // 1. Basic Validity Check (redundant but safe)
             const fromIdx = coordToBitIndex(candidateMove.from);
             const toIdx = coordToBitIndex(candidateMove.to);
             if (fromIdx === -1 || toIdx === -1) continue;
             const validation = isValidMoveBB(fromIdx, toIdx, candidateMove.pieceTypeIndex, player, gameState.bitboards);
             if (!validation.valid) {
                  console.warn(`AI Warning: Move ${candidateMove.from}->${candidateMove.to} from search list failed basic validation: ${validation.reason}`);
-                 continue; // Skip invalid move
+                 continue;
             }
 
-            // 2. Repetition Check (mimic the logic in performMoveBB)
-            const currentBitboards = gameState.bitboards;
-            const currentHash = gameState.zobristHash;
+            // 2. *** Accurate Repetition Check using Final Hash ***
             let isIllegalRepetition = false;
+            // Use the helper function to get the hash *after* side effects
+            const finalPredictedHash = getFinalHashAfterMoveBB(
+                gameState.bitboards,
+                player,
+                gameState.zobristHash,
+                initialHungryBBForRepCheck, // Pass initial hungry state
+                candidateMove
+            );
 
-            const simResultForRepCheck = simulateMoveBB(currentBitboards, player, currentHash, candidateMove);
-            if (simResultForRepCheck) {
-                const nextHashForRepCheck = simResultForRepCheck.nextHash;
-                const repetitionCount = gameState.boardStateHistory[nextHashForRepCheck.toString()] || 0;
+            if (finalPredictedHash !== null) {
+                const repetitionCount = gameState.boardStateHistory[finalPredictedHash.toString()] || 0;
                 if (repetitionCount >= 2) {
-                    const { orange: oc, yellow: yc } = getPieceCountsBB(currentBitboards);
+                    const { orange: oc, yellow: yc } = getPieceCountsBB(gameState.bitboards); // Use current counts
                     const restrictedPlayer = getRestrictedPlayer(oc, yc);
                     if (player === restrictedPlayer) {
                         isIllegalRepetition = true;
-                         console.log(`AI Note: Skipping move ${candidateMove.from}->${candidateMove.to} due to repetition rule.`);
+                         console.log(`AI Note: Skipping move ${candidateMove.from}->${candidateMove.to} due to repetition rule (checked final hash).`);
                     }
                 }
             } else {
-                 // If simulation fails (e.g. hungry den entry), treat as invalid for this check too.
-                 console.warn(`AI Note: Skipping move ${candidateMove.from}->${candidateMove.to} because simulation failed pre-repetition check.`);
-                 continue;
+                 // If final hash is null, the move simulation failed (e.g., invalid hungry den entry)
+                 console.warn(`AI Note: Skipping move ${candidateMove.from}->${candidateMove.to} because final hash prediction failed.`);
+                 continue; // Treat as invalid move
             }
+            // --- End Accurate Repetition Check ---
+
 
             // 3. If NOT an illegal repetition, perform this move
             if (!isIllegalRepetition) {
                 console.log(`AI Performing Move: ${candidateMove.from}->${candidateMove.to} (Score: ${evaluatedMove.score.toFixed(0)}, Depth: ${lastCompletedDepth})`);
-                performMove(candidateMove.from, candidateMove.to); // Assumes performMove exists in main scope
+                performMove(candidateMove.from, candidateMove.to);
                 movePerformed = true;
-                break; // Exit the loop once a valid move is performed
+                break;
             }
         } // End loop through bestMovesListOverall
     }
@@ -1408,25 +1442,22 @@ function triggerAIMove() {
     // --- Handle cases where no move was performed ---
     if (!movePerformed) {
         if (bestMovesListOverall.length > 0 && bestMovesListOverall[0].move === null) {
-            // Search correctly identified stalemate/checkmate
             console.log("AI Search concluded no valid moves (likely stalemate/checkmate). No move performed.");
              if (!gameState.gameOver) {
-                 // This state indicates the *opponent* likely delivered mate/stalemate
                  updateStatus(`Game Over! ${player.toUpperCase()} has no legal moves.`);
                  gameState.gameOver = true;
-                  if(bestScoreOverall < EVAL_MATED_SCORE_THRESHOLD) { // Check score to differentiate mate/stalemate
-                     gameState.winner = player === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE; // Opponent wins
+                  if(bestScoreOverall < EVAL_MATED_SCORE_THRESHOLD) {
+                     gameState.winner = player === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
                   } else {
-                      gameState.winner = null; // Draw
+                      gameState.winner = null;
                   }
                  disablePlayerInteraction();
                  pauseAllClocks();
                  updateUndoButtonState();
              }
         } else {
-            // All moves returned by the search were invalid or rejected by repetition check
             console.error(`AI ERROR: No valid move found in search results! (lastCompletedDepth: ${lastCompletedDepth}). Falling back.`);
-            performFallbackMove(player); // Call fallback logic
+            performFallbackMove(player);
         }
     }
 }

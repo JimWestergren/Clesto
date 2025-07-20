@@ -802,6 +802,228 @@ function simulateMoveBB(currentBitboards, currentPlayer, currentHash, move) {
 
 // --- Move Execution ---
 
+// Add this new function to gameLogic.js
+
+/**
+ * Calculates the final Zobrist hash *after* simulating a move and its side effects
+ * (starvation, hunger clear, hunger declaration) without modifying the global state.
+ * Used primarily for accurate repetition checking at the root.
+ *
+ * Depends on: checkAndApplyStarvationBB (needs modification to not alter input arrays directly),
+ *             simulateMoveBB, declareHungryAnimalsBB (needs modification or alternative),
+ *             toggleHungryKeyBB, lsbIndex, clearBit, getBit, coordToBitIndex (utils/bitboardUtils/gameState).
+ *
+ * @param {bigint[]} initialBitboards - The bitboard state *before* the move.
+ * @param {string} playerMoving - The player making the move.
+ * @param {bigint} initialHash - The Zobrist hash *before* the move.
+ * @param {{orange: bigint, yellow: bigint}} initialHungryBB - The hungry state *before* the move.
+ * @param {object} move - The move object { from: string, to: string, pieceTypeIndex: number }.
+ * @returns {bigint|null} The predicted final Zobrist hash after all effects, or null if the move is fundamentally invalid (e.g., illegal hungry den entry).
+ */
+function getFinalHashAfterMoveBB(initialBitboards, playerMoving, initialHash, initialHungryBB, move) {
+    const fnName = "getFinalHashAfterMoveBB";
+
+    // --- Basic Validation ---
+    if (!initialBitboards || !playerMoving || typeof initialHash !== 'bigint' || !initialHungryBB || !move) {
+        console.error(`[${fnName}] Invalid input parameters.`);
+        return null;
+    }
+    const fromIndex = coordToBitIndex(move.from);
+    const toIndex = coordToBitIndex(move.to);
+    if (fromIndex === -1 || toIndex === -1) {
+        console.error(`[${fnName}] Invalid move coordinates.`);
+        return null;
+    }
+
+    // --- 1. Simulate Starvation (Hash Only) ---
+    // Need to determine if it was an attack first from the initial state
+    const opponentBBIndex = playerMoving === PLAYERS.ORANGE ? BB_IDX.YELLOW_PIECES : BB_IDX.ORANGE_PIECES;
+    const isAttack = getBit(initialBitboards[opponentBBIndex], toIndex) !== 0n;
+    const hungryBBAtTurnStart = initialHungryBB[playerMoving];
+
+    // Simulate starvation effects on temporary copies
+    // NOTE: We assume checkAndApplyStarvationBB primarily affects hash via piece removal.
+    // We need its logic for *which* pieces are removed to update the hash,
+    // but we don't need the modified boards directly, only the hash change.
+
+    let hashAfterStarve = initialHash;
+    let boardsAfterStarve = [...initialBitboards]; // Copy for intermediate steps
+    let starvedPiecesIndices = []; // Store indices of starved pieces
+
+    let tempHungryBB = hungryBBAtTurnStart;
+    while (tempHungryBB !== BB_EMPTY) {
+        const hungryIndex = lsbIndex(tempHungryBB);
+        if (hungryIndex === -1) break;
+        const didThisPieceAttack = (hungryIndex === fromIndex) && isAttack;
+        if (!didThisPieceAttack) {
+            starvedPiecesIndices.push(hungryIndex); // Mark for hash update
+            // Find piece type at hungryIndex in the *initial* boards
+            let starvedPieceTypeIndex = -1;
+            for (let typeIdx = BB_IDX.PIECE_START; typeIdx <= BB_IDX.PIECE_END; typeIdx++) {
+                if (getBit(initialBitboards[typeIdx], hungryIndex) !== 0n) { // Check initial boards
+                    starvedPieceTypeIndex = typeIdx;
+                    break;
+                }
+            }
+            if (starvedPieceTypeIndex !== -1) {
+                hashAfterStarve = togglePieceKeyBB(hashAfterStarve, starvedPieceTypeIndex, hungryIndex);
+                // Also update the temporary board copy for the next simulation step
+                boardsAfterStarve[starvedPieceTypeIndex] = clearBit(boardsAfterStarve[starvedPieceTypeIndex], hungryIndex);
+                const playerBBIdx = playerMoving === PLAYERS.ORANGE ? BB_IDX.ORANGE_PIECES : BB_IDX.YELLOW_PIECES;
+                boardsAfterStarve[playerBBIdx] = clearBit(boardsAfterStarve[playerBBIdx], hungryIndex);
+            }
+        }
+        tempHungryBB = clearBit(tempHungryBB, hungryIndex);
+    }
+     // Recalculate occupied board for the post-starvation state
+     boardsAfterStarve[BB_IDX.OCCUPIED] = boardsAfterStarve[BB_IDX.ORANGE_PIECES] | boardsAfterStarve[BB_IDX.YELLOW_PIECES];
+
+
+    // Check if the moving piece itself was starved
+    if (starvedPiecesIndices.includes(fromIndex)) {
+        // If the mover starved, the game state changes differently.
+        // Need to simulate the turn toggle and opponent's hunger declaration hash changes.
+        let finalHashIfMoverStarved = hashAfterStarve; // Start from hash after piece removal
+        const nextPlayer = playerMoving === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+        finalHashIfMoverStarved = toggleTurnKey(finalHashIfMoverStarved); // Toggle turn
+
+        // Calculate opponent's hungry state *without* modifying global state
+        const opponentHungryMap = calculateHungryMap(nextPlayer, boardsAfterStarve); // Need a non-modifying version
+        for(const coords in opponentHungryMap) {
+            const hungryIdx = coordToBitIndex(coords);
+            if(hungryIdx !== -1) {
+                 finalHashIfMoverStarved = toggleHungryKeyBB(finalHashIfMoverStarved, nextPlayer, hungryIdx);
+            }
+        }
+        return finalHashIfMoverStarved;
+    }
+
+
+    // --- 2. Simulate Main Move (Hash Only) ---
+    // Use the boards *after* starvation simulation and the hash *after* starvation piece removal
+    const simResult = simulateMoveBB(boardsAfterStarve, playerMoving, hashAfterStarve, move);
+    if (!simResult) {
+        // This indicates an illegal move detected by simulateMoveBB (e.g., hungry den entry)
+        return null;
+    }
+    let hashAfterMove = simResult.nextHash; // Hash now includes move + capture + turn toggle
+    const nextPlayer = simResult.nextPlayer;
+    const boardsAfterMove = simResult.nextBitboards; // Need boards for hunger calculation
+
+
+    // --- 3. Simulate Clearing Mover's Hungry State (Hash Only) ---
+    let hashAfterClear = hashAfterMove;
+    let moverHungryBeforeClear = initialHungryBB[playerMoving]; // Use the initial hungry state
+    // Note: Starved pieces were already handled above. We only clear hunger for non-starved pieces.
+    tempHungryBB = moverHungryBeforeClear;
+    while (tempHungryBB !== BB_EMPTY) {
+        const lsb = lsbIndex(tempHungryBB);
+        if (lsb === -1) break;
+        // Only toggle if the piece wasn't starved (starvation hash effect already applied)
+        if (!starvedPiecesIndices.includes(lsb)) {
+            hashAfterClear = toggleHungryKeyBB(hashAfterClear, playerMoving, lsb);
+        }
+        tempHungryBB = clearBit(tempHungryBB, lsb);
+    }
+
+
+    // --- 4. Simulate Declaring Next Player's Hungry State (Hash Only) ---
+    let finalHash = hashAfterClear;
+    // We need a function to *calculate* the next hungry state without modifying gameState
+    const nextHungryMap = calculateHungryMap(nextPlayer, boardsAfterMove);
+
+    // Compare with the initial hungry state for the *next* player to find changes
+    const nextPlayerInitialHungryBB = initialHungryBB[nextPlayer];
+    let nextPlayerCalculatedHungryBB = BB_EMPTY;
+    for (const coords in nextHungryMap) {
+         const idx = coordToBitIndex(coords);
+         if (idx !== -1) nextPlayerCalculatedHungryBB = setBit(nextPlayerCalculatedHungryBB, idx);
+    }
+
+    // Find differences and toggle hash
+    const changedBits = nextPlayerInitialHungryBB ^ nextPlayerCalculatedHungryBB;
+    tempHungryBB = changedBits;
+    while (tempHungryBB !== BB_EMPTY) {
+        const lsb = lsbIndex(tempHungryBB);
+        if (lsb === -1) break;
+        finalHash = toggleHungryKeyBB(finalHash, nextPlayer, lsb);
+        tempHungryBB = clearBit(tempHungryBB, lsb);
+    }
+
+    return finalHash;
+}
+
+/**
+ * Helper function to calculate the hungry map for a player WITHOUT modifying global state.
+ * This is a non-mutating version of the logic within declareHungryAnimalsBB.
+ * Depends on: getAllValidMovesBB, isValidMoveBB, getBit, lsbIndex, clearBit, bitIndexToCoord,
+ *             coordToBitIndex (bitboardUtils.js), BB_IDX, PLAYERS (constants.js),
+ *             BB_EMPTY (bitboardUtils.js).
+ *
+ * @param {string} playerToCalculateFor - The player ('orange' or 'yellow') whose potential hungry pieces to find.
+ * @param {bigint[]} currentBitboards - The current bitboard state array.
+ * @returns {object} A map `{ coords: true }` for each piece that *can* make a valid capture.
+ */
+function calculateHungryMap(playerToCalculateFor, currentBitboards) {
+    const fnName = "calculateHungryMap";
+    const hungryMap = {};
+    const opponent = playerToCalculateFor === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+    const opponentBBIndex = playerToCalculateFor === PLAYERS.ORANGE ? BB_IDX.YELLOW_PIECES : BB_IDX.ORANGE_PIECES;
+
+    if (!currentBitboards) {
+        console.error(`[${fnName}] Error: Invalid bitboards provided.`);
+        return hungryMap;
+    }
+    const opponentPiecesBB = currentBitboards[opponentBBIndex];
+
+    // Generate all valid moves for the player once (use simulation flag)
+    let allPlayerMoves = [];
+    try {
+        allPlayerMoves = getAllValidMovesBB(currentBitboards, playerToCalculateFor, true);
+    } catch (e) {
+        console.error(`[${fnName}] Error generating moves for ${playerToCalculateFor}:`, e);
+    }
+
+    // Iterate through each piece type for the player
+    const pieceTypeStart = playerToCalculateFor === PLAYERS.ORANGE ? BB_IDX.PIECE_START : Y_RAT_IDX;
+    const pieceTypeEnd = playerToCalculateFor === PLAYERS.ORANGE ? O_ELEPHANT_IDX : BB_IDX.PIECE_END;
+
+    for (let pieceTypeIndex = pieceTypeStart; pieceTypeIndex <= pieceTypeEnd; pieceTypeIndex++) {
+        let pieceBoard = currentBitboards[pieceTypeIndex];
+
+        while (pieceBoard !== BB_EMPTY) {
+            const fromIndex = lsbIndex(pieceBoard);
+            if (fromIndex === -1) break;
+
+            let canMakeValidCapture = false;
+            // Filter pre-generated moves for the current piece
+            const pieceMoves = allPlayerMoves.filter(m => coordToBitIndex(m.from) === fromIndex);
+
+            for (const move of pieceMoves) {
+                const toIndex = coordToBitIndex(move.to);
+
+                // Is it targeting an opponent piece?
+                if (toIndex !== -1 && getBit(opponentPiecesBB, toIndex) !== 0n) {
+                    // Is the capture actually valid (rank, traps etc)?
+                    const validation = isValidMoveBB(fromIndex, toIndex, pieceTypeIndex, playerToCalculateFor, currentBitboards);
+                    if (validation.valid) {
+                        canMakeValidCapture = true;
+                        break; // Found a valid capture for this piece
+                    }
+                }
+            }
+
+            if (canMakeValidCapture) {
+                const coords = bitIndexToCoord(fromIndex);
+                if (coords) hungryMap[coords] = true;
+            }
+
+            pieceBoard = clearBit(pieceBoard, fromIndex); // Move to next piece of this type
+        }
+    }
+    return hungryMap;
+}
+
 /**
  * Executes a validated move, updating the main `gameState`. Integrates starvation and hungry declaration.
  * Handles bitboard updates, Zobrist hash updates (including hungry state), turn switching,
@@ -811,7 +1033,7 @@ function simulateMoveBB(currentBitboards, currentPlayer, currentHash, move) {
  * Depends on: gameState, getPieceData, isValidMoveBB, simulateMoveBB, checkForStalemateBB,
  *             declareHungryAnimalsBB, checkAndApplyStarvationBB,
  *             PLAYERS, BB_IDX, RANK_TO_CODE (constants.js), BB_EMPTY (bitboardUtils.js),
- *             coordToBitIndex, getBit, clearBit, lsbIndex, bitIndexToCoord, toggleHungryKeyBB (gameState.js).
+ *             coordToBitIndex, getBit, clearBit, lsbIndex, bitIndexToCoord, toggleHungryKeyBB, toggleTurnKey (gameState.js).
  * Modifies: gameState.
  *
  * @param {string} fromCoords - The starting coordinates of the move.
@@ -836,7 +1058,6 @@ function performMoveBB(fromCoords, toCoords) {
     if (gameState.gameOver) { return { success: false, reason: "Game is already over." }; }
     const movingPieceData = getPieceData(fromCoords);
     if (!movingPieceData || movingPieceData.player !== gameState.currentPlayer) {
-        // console.error(`[${fnName}] Error: Cannot move piece at ${fromCoords}. Data:`, movingPieceData, `Current Player: ${gameState.currentPlayer}`);
         return { success: false, reason: `Cannot move piece at ${fromCoords}.` };
     }
 
@@ -857,108 +1078,96 @@ function performMoveBB(fromCoords, toCoords) {
 
     // --- Get info before modifying state ---
     const playerWhoMoved = gameState.currentPlayer;
-    const turnNumberForLog = gameState.turnNumber; // Capture turn number *before* potential increment
-    const hungryBBAtTurnStart = gameState.hungryBB[playerWhoMoved];
-    let currentBitboards = [...gameState.bitboards]; // Use copies for checks before modification
-    let currentHash = gameState.zobristHash;       // Use current hash
-    let notation = `${RANK_TO_CODE[movingPieceData.rank]}`; // Start building notation
+    const turnNumberForLog = gameState.turnNumber;
+    const initialHash = gameState.zobristHash; // Hash *before* any changes this turn
+    const initialHungryBB = { // Hungry state *before* any changes this turn
+         [PLAYERS.ORANGE]: gameState.hungryBB[PLAYERS.ORANGE],
+         [PLAYERS.YELLOW]: gameState.hungryBB[PLAYERS.YELLOW]
+    };
+    let notation = `${RANK_TO_CODE[movingPieceData.rank]}`;
 
     // --- Check Repetition Rule Before Move ---
-    // Simulate the move simply to get the hash *after* piece movement and turn toggle.
-    // This hash does NOT include starvation or hunger updates yet.
-    const simResultForRepCheck = simulateMoveBB(currentBitboards, playerWhoMoved, currentHash, { from: fromCoords, to: toCoords, pieceTypeIndex: movingPieceTypeIndex });
+    // Use the new helper function to get the *final* hash after all side effects
+    const finalPredictedHash = getFinalHashAfterMoveBB(
+        gameState.bitboards,
+        playerWhoMoved,
+        initialHash,
+        initialHungryBB,
+        { from: fromCoords, to: toCoords, pieceTypeIndex: movingPieceTypeIndex } // Construct move object for helper
+    );
 
-    if (!simResultForRepCheck) {
-        // If simulation fails (e.g., hungry den entry), the move is illegal anyway.
-        console.warn(`[${fnName} RepCheck] Simulation failed for ${fromCoords}->${toCoords}, move likely invalid.`);
-        // Let the main execution path handle the failure reason if needed.
-        // No need to block based on repetition if the move simulation itself fails.
+    if (finalPredictedHash === null) {
+         console.warn(`[${fnName} RepCheck] Predicted hash is null, move ${fromCoords}->${toCoords} likely invalid.`);
+         return { success: false, reason: validationResult.reason || "Invalid move predicted." };
     } else {
-        const nextHashForRepCheck = simResultForRepCheck.nextHash; // Hash after move+turn toggle
-        const repetitionCount = gameState.boardStateHistory[nextHashForRepCheck.toString()] || 0;
-
-        // Check if the resulting position (ignoring hunger changes for the check) is repeated >= 2 times
+        const repetitionCount = gameState.boardStateHistory[finalPredictedHash.toString()] || 0;
         if (repetitionCount >= 2) {
-            const { orange: orangeCount, yellow: yellowCount } = getPieceCountsBB(currentBitboards); // Use current piece counts
+            const { orange: orangeCount, yellow: yellowCount } = getPieceCountsBB(gameState.bitboards);
             const restrictedPlayer = getRestrictedPlayer(orangeCount, yellowCount);
             if (playerWhoMoved === restrictedPlayer) {
-                console.log(`[${fnName}] Illegal move: ${fromCoords}->${toCoords} violates repetition rule for ${playerWhoMoved}.`);
+                console.log(`[${fnName}] Illegal move: ${fromCoords}->${toCoords} violates repetition rule for ${playerWhoMoved} based on final hash.`);
                 return { success: false, reason: "Move violates repetition rule (3-fold repetition)." };
             }
         }
     }
-    // --- Repetition check passed or simulation failed, proceed with actual move execution ---
+    // --- Repetition check passed, proceed with actual move execution ---
 
-    // Re-fetch state again as we start the actual modification process
-    currentBitboards = [...gameState.bitboards];
-    currentHash = gameState.zobristHash;
+    let currentBitboards = [...gameState.bitboards]; // Start with current boards
+    let currentHash = initialHash; // Start with current hash
 
     // --- Check for Attack (Needed for starvation) ---
     const opponentBBIndex = playerWhoMoved === PLAYERS.ORANGE ? BB_IDX.YELLOW_PIECES : BB_IDX.ORANGE_PIECES;
     const isAttack = getBit(currentBitboards[opponentBBIndex], toIndex) !== 0n;
     let capturedPieceTypeIndexAtTarget = null;
     if (isAttack) {
-        notation += 'x'; // Add to notation early
-        const opponentTypeStart = playerWhoMoved === PLAYERS.ORANGE ? Y_RAT_IDX : BB_IDX.PIECE_START;
-        const opponentTypeEnd = playerWhoMoved === PLAYERS.ORANGE ? BB_IDX.PIECE_END : O_ELEPHANT_IDX;
-        for (let oppTypeIdx = opponentTypeStart; oppTypeIdx <= opponentTypeEnd; oppTypeIdx++) {
+        notation += 'x';
+        const oppTypeStart = playerWhoMoved === PLAYERS.ORANGE ? Y_RAT_IDX : BB_IDX.PIECE_START;
+        const oppTypeEnd = playerWhoMoved === PLAYERS.ORANGE ? BB_IDX.PIECE_END : O_ELEPHANT_IDX;
+        for (let oppTypeIdx = oppTypeStart; oppTypeIdx <= oppTypeEnd; oppTypeIdx++) {
             if (getBit(currentBitboards[oppTypeIdx], toIndex) !== 0n) {
                 capturedPieceTypeIndexAtTarget = oppTypeIdx;
                 break;
             }
         }
         if (capturedPieceTypeIndexAtTarget === null) {
-            console.error(`[${fnName}] Inconsistency: Attack detected at ${toCoords} but captured piece type not found in current state.`);
-            return { success: false, reason: "Internal error: Cannot identify captured piece." };
+             console.error(`[${fnName}] Inconsistency: Attack validated but captured piece type not found at ${toCoords}.`);
+             return { success: false, reason: "Internal error: Cannot identify captured piece." };
         }
     }
 
-    // --- Apply Starvation (to actual game state) ---
-    const starvationResult = checkAndApplyStarvationBB(playerWhoMoved, fromCoords, isAttack, hungryBBAtTurnStart, currentBitboards, currentHash);
+    // --- Apply Starvation (updates hash for removed pieces) ---
+    const starvationResult = checkAndApplyStarvationBB(
+        playerWhoMoved,
+        fromCoords,
+        isAttack,
+        initialHungryBB[playerWhoMoved],
+        currentBitboards,
+        currentHash
+    );
     const starvedPiecesCoords = starvationResult.starvedPiecesCoords;
-    currentBitboards = starvationResult.modifiedBitboards; // Update boards state
-    currentHash = starvationResult.modifiedHash;          // Update hash state
+    const starvedIndices = starvationResult.starvedIndices;
+    currentBitboards = starvationResult.modifiedBitboards;
+    currentHash = starvationResult.modifiedHash;
 
     // --- Check if the moving piece itself was starved ---
-    if (starvedPiecesCoords.includes(fromCoords)) {
+    if (starvedIndices.includes(fromIndex)) {
         console.log(`[${fnName}] Move ${fromCoords}->${toCoords} invalidated: moving piece was starved.`);
-        // --- Logic for starved moving piece (Updates actual gameState hash including hunger changes) ---
-        const oldHungryForMovedPlayer = gameState.hungryBB[playerWhoMoved];
-        let tempClearedBB = oldHungryForMovedPlayer;
-        while (tempClearedBB !== BB_EMPTY) {
-             const lsb = lsbIndex(tempClearedBB);
-             if (lsb === -1) break;
-             currentHash = toggleHungryKeyBB(currentHash, playerWhoMoved, lsb);
-             tempClearedBB = clearBit(tempClearedBB, lsb);
-        }
-        gameState.hungryBB[playerWhoMoved] = BB_EMPTY; // Update actual hungry state
-
         const nextPlayerAfterStarve = playerWhoMoved === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+        currentHash = toggleTurnKey(currentHash);
+        gameState.bitboards = currentBitboards;
         gameState.currentPlayer = nextPlayerAfterStarve;
-        currentHash = toggleTurnKey(currentHash); // Toggle turn hash
-
-        gameState.bitboards = currentBitboards; // Store post-starvation boards
-        gameState.zobristHash = currentHash; // Store hash before opponent hunger declaration
-
-        const declaredHungryMap = declareHungryAnimalsBB(nextPlayerAfterStarve, currentBitboards); // Updates opponent hungryBB & hash internally
-        currentHash = gameState.zobristHash; // Refresh hash AFTER declaration
-        // const hungryCount = Object.keys(declaredHungryMap).length; // Not needed for notation here
-
+        gameState.hungryBB[playerWhoMoved] = BB_EMPTY;
+        gameState.zobristHash = currentHash;
+        const declaredHungryMap = declareHungryAnimalsBB(nextPlayerAfterStarve, gameState.bitboards);
+        currentHash = gameState.zobristHash;
         gameState.playerLastMoves[playerWhoMoved] = { from: fromCoords, to: 'STARVED' };
-        if (playerWhoMoved === PLAYERS.YELLOW) gameState.turnNumber++; // Increment turn even if starved
-
-        // Log the final state hash AFTER all updates
-        const hashStringAfterStarve = gameState.zobristHash.toString();
+        if (playerWhoMoved === PLAYERS.YELLOW) gameState.turnNumber++;
+        const hashStringAfterStarve = currentHash.toString();
         gameState.boardStateHistory[hashStringAfterStarve] = (gameState.boardStateHistory[hashStringAfterStarve] || 0) + 1;
-
-        // --- Update Move History for Starved Case ---
-        const starvedNotation = `${fromCoords}-STARVED`; // Special notation for log history
+        const starvedNotation = `${fromCoords}-STARVED`;
         const currentTurnLogForStarve = gameState.moveHistory.get(turnNumberForLog) || { turn: turnNumberForLog, orange: null, yellow: null };
         currentTurnLogForStarve[playerWhoMoved] = starvedNotation;
         gameState.moveHistory.set(turnNumberForLog, currentTurnLogForStarve);
-        // --- End History Update ---
-
-        // Check Game End
         let finalGameOver = false;
         let finalWinner = null;
         const opponentBBIndexAfterStarve = playerWhoMoved === PLAYERS.ORANGE ? BB_IDX.YELLOW_PIECES : BB_IDX.ORANGE_PIECES;
@@ -969,21 +1178,19 @@ function performMoveBB(fromCoords, toCoords) {
         } else if (gameState.bitboards[playerBBIndexAfterStarve] === BB_EMPTY) {
             finalGameOver = true;
             finalWinner = nextPlayerAfterStarve;
-        }
-        if (!finalGameOver) {
+        } else {
             const isStalemate = checkForStalemateBB(nextPlayerAfterStarve, gameState.bitboards);
             if (isStalemate) {
                 finalGameOver = true;
                 finalWinner = null;
             }
-         }
+        }
         gameState.gameOver = finalGameOver;
         gameState.winner = finalWinner;
-
-        return { // Return failure, but include starvation details
+        return {
             success: false,
             reason: "Move invalidated: moving piece was starved.",
-            notation: starvedNotation, // Include the special notation here too
+            notation: starvedNotation,
             starvedPiecesCoords: starvedPiecesCoords,
             declaredHungryMap: declaredHungryMap,
             isGameOver: finalGameOver,
@@ -993,46 +1200,53 @@ function performMoveBB(fromCoords, toCoords) {
         };
     }
 
-    // --- Simulate the main move on the (potentially starved) state (Actual move) ---
-    const simResult = simulateMoveBB(currentBitboards, playerWhoMoved, currentHash, { from: fromCoords, to: toCoords, pieceTypeIndex: movingPieceTypeIndex });
+    // --- Simulate the main move on the (potentially starved) state ---
+    // *** FIX: Construct the move object here ***
+    const moveObject = {
+        from: fromCoords,
+        to: toCoords,
+        pieceTypeIndex: movingPieceTypeIndex
+    };
+    const simResult = simulateMoveBB(currentBitboards, playerWhoMoved, currentHash, moveObject);
+    // *** ---------------------------------- ***
+
     if (!simResult) {
-        console.error(`[${fnName}] Critical Error: Simulation failed for move ${fromCoords}->${toCoords} AFTER starvation checks.`);
-        // This case should ideally be caught by isValidMoveBB earlier unless simulateMoveBB has extra checks
-        return { success: false, reason: "Internal error during final move simulation after starvation." };
+        console.error(`[${fnName}] Critical Error: Simulation failed for validated move ${fromCoords}->${toCoords}.`);
+        return { success: false, reason: validationResult.reason || "Internal error during final move simulation." };
     }
 
-    // --- Apply Actual Move Results to Global Game State ---
-    gameState.bitboards = simResult.nextBitboards;
-    currentHash = simResult.nextHash; // Hash now includes move + turn toggle
+    // Update state based on simulation result
+    currentBitboards = simResult.nextBitboards;
+    currentHash = simResult.nextHash;
+    gameState.bitboards = currentBitboards;
+    gameState.currentPlayer = simResult.nextPlayer;
     gameState.playerLastMoves[playerWhoMoved] = { from: fromCoords, to: toCoords };
 
-    // --- Clear Previous Hungry State for Player Who Moved (Actual state update) ---
-    const oldHungryForMovedPlayer = gameState.hungryBB[playerWhoMoved];
-    let tempClearedBB = oldHungryForMovedPlayer;
+    // --- Clear Previous Hungry State for Player Who Moved ---
+    let tempClearedBB = initialHungryBB[playerWhoMoved];
     while (tempClearedBB !== BB_EMPTY) {
-         const lsb = lsbIndex(tempClearedBB);
-         if (lsb === -1) break;
-         currentHash = toggleHungryKeyBB(currentHash, playerWhoMoved, lsb); // Update hash
-         tempClearedBB = clearBit(tempClearedBB, lsb);
+        const lsb = lsbIndex(tempClearedBB);
+        if (lsb === -1) break;
+        if (!starvedIndices.includes(lsb)) {
+            currentHash = toggleHungryKeyBB(currentHash, playerWhoMoved, lsb);
+        }
+        tempClearedBB = clearBit(tempClearedBB, lsb);
     }
-    gameState.hungryBB[playerWhoMoved] = BB_EMPTY; // Update actual hungry state
-
-    // --- Update Current Player ---
-    gameState.currentPlayer = simResult.nextPlayer;
+    gameState.hungryBB[playerWhoMoved] = BB_EMPTY;
 
     // --- Finish Building Notation String ---
-    notation += toCoords; // Add destination
+    notation += toCoords;
     if (starvedPiecesCoords.length > 0) {
-        notation += 'S'.repeat(starvedPiecesCoords.length); // Use 'S' for starved in notation
+        notation += 'S'.repeat(starvedPiecesCoords.length);
     }
 
-    // --- Declare Hungry Animals for the *Next* Player (Actual state update) ---
-    gameState.zobristHash = currentHash; // Store hash *before* declaration
-    const declaredHungryMap = declareHungryAnimalsBB(gameState.currentPlayer, gameState.bitboards); // Updates opponent hungryBB & hash internally
-    currentHash = gameState.zobristHash; // Refresh hash *after* declaration updated it
+    // --- Declare Hungry Animals for the *Next* Player ---
+    gameState.zobristHash = currentHash;
+    const declaredHungryMap = declareHungryAnimalsBB(gameState.currentPlayer, gameState.bitboards);
+    currentHash = gameState.zobristHash;
     const hungryCount = Object.keys(declaredHungryMap).length;
     if (hungryCount > 0) {
-        notation += '+'.repeat(hungryCount); // Add hungry indicators
+        notation += '+'.repeat(hungryCount);
     }
 
     // --- Update Turn Number ---
@@ -1040,20 +1254,14 @@ function performMoveBB(fromCoords, toCoords) {
         gameState.turnNumber++;
     }
 
-    // --- Log Board State for Repetition (Actual state logging) ---
-    // The hash stored here now correctly includes all side effects: starvation, move, turn, hunger clear, hunger declare.
+    // --- Log Final Board State Hash ---
     const finalHashString = currentHash.toString();
     gameState.boardStateHistory[finalHashString] = (gameState.boardStateHistory[finalHashString] || 0) + 1;
 
     // --- Update Move History ---
-    // Get or create the entry for the current turn number
     const currentTurnLog = gameState.moveHistory.get(turnNumberForLog) || { turn: turnNumberForLog, orange: null, yellow: null };
-    // Add the generated notation for the player who moved
     currentTurnLog[playerWhoMoved] = notation;
-    // Store it back in the Map
     gameState.moveHistory.set(turnNumberForLog, currentTurnLog);
-    // --- End History Update ---
-
 
     // --- Check Post-Move Game End Conditions ---
     let finalGameOver = simResult.nextGameOver;
@@ -1074,14 +1282,14 @@ function performMoveBB(fromCoords, toCoords) {
     // --- Return Result Object ---
     return {
         success: true,
-        notation: notation, // Return the fully constructed notation
+        notation: notation,
         capturedPieceTypeIndex: capturedPieceTypeIndexAtTarget,
         starvedPiecesCoords: starvedPiecesCoords,
         declaredHungryMap: declaredHungryMap,
         isGameOver: finalGameOver,
         winner: finalWinner,
         playerWhoMoved: playerWhoMoved,
-        turnNumber: turnNumberForLog // Return the turn number when the move started
+        turnNumber: turnNumberForLog
     };
 }
 
@@ -1154,10 +1362,9 @@ function checkForStalemateBB(playerToCheck, bitboards) {
 
 /**
  * Identifies pieces of the specified player that can make a valid capture in the current state.
- * Updates the corresponding hungryBB in the global gameState AND updates the Zobrist hash.
- * Depends on: getAllValidMovesBB, isValidMoveBB, getBit, lsbIndex, clearBit, bitIndexToCoord,
- *             coordToBitIndex (bitboardUtils.js), BB_IDX, PLAYERS (constants.js),
- *             BB_EMPTY (bitboardUtils.js), gameState, toggleHungryKeyBB (gameState.js).
+ * Updates the corresponding hungryBB in the global gameState AND updates the Zobrist hash based on changes.
+ * Depends on: calculateHungryMap, coordToBitIndex, bitIndexToCoord, setBit, lsbIndex, clearBit,
+ *             BB_EMPTY, PLAYERS (constants.js), gameState, toggleHungryKeyBB (gameState.js).
  * Modifies: gameState.hungryBB, gameState.zobristHash.
  *
  * @param {string} playerToDeclareFor - The player ('orange' or 'yellow') whose pieces' hunger state to update.
@@ -1166,64 +1373,21 @@ function checkForStalemateBB(playerToCheck, bitboards) {
  */
 function declareHungryAnimalsBB(playerToDeclareFor, currentBitboards) {
     const fnName = "declareHungryAnimalsBB";
-    let newHungryBBforPlayer = BB_EMPTY;
-    const newlyHungryMap = {}; // For return value
-    const opponent = playerToDeclareFor === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
-    const opponentBBIndex = playerToDeclareFor === PLAYERS.ORANGE ? BB_IDX.YELLOW_PIECES : BB_IDX.ORANGE_PIECES;
 
     if (!currentBitboards || !gameState || !gameState.hungryBB) { // Check gameState existence
         console.error(`[${fnName}] Error: Invalid bitboards or gameState missing.`);
-        return newlyHungryMap;
+        return {};
     }
-    const opponentPiecesBB = currentBitboards[opponentBBIndex];
+
     const oldHungryBBforPlayer = gameState.hungryBB[playerToDeclareFor]; // Get OLD state for hash diff
 
-    // Optimization: Generate all valid moves for the player once
-    let allPlayerMoves = [];
-    try {
-        // Use simulation flag true for potentially faster pseudo-move generation
-        allPlayerMoves = getAllValidMovesBB(currentBitboards, playerToDeclareFor, true);
-    } catch (e) {
-        console.error(`[${fnName}] Error generating moves for ${playerToDeclareFor}:`, e);
-    }
-
-    // Iterate through each piece type for the player
-    const pieceTypeStart = playerToDeclareFor === PLAYERS.ORANGE ? BB_IDX.PIECE_START : Y_RAT_IDX;
-    const pieceTypeEnd = playerToDeclareFor === PLAYERS.ORANGE ? O_ELEPHANT_IDX : BB_IDX.PIECE_END;
-
-    for (let pieceTypeIndex = pieceTypeStart; pieceTypeIndex <= pieceTypeEnd; pieceTypeIndex++) {
-        let pieceBoard = currentBitboards[pieceTypeIndex];
-
-        while (pieceBoard !== BB_EMPTY) {
-            const fromIndex = lsbIndex(pieceBoard);
-            if (fromIndex === -1) break;
-            //const fromCoords = bitIndexToCoord(fromIndex); // Coords only needed if logging
-
-            let canMakeValidCapture = false;
-            // Filter pre-generated moves for the current piece
-            const pieceMoves = allPlayerMoves.filter(m => coordToBitIndex(m.from) === fromIndex);
-
-            for (const move of pieceMoves) {
-                const toIndex = coordToBitIndex(move.to);
-
-                // Is it targeting an opponent piece?
-                if (toIndex !== -1 && getBit(opponentPiecesBB, toIndex) !== 0n) {
-                    // Is the capture actually valid (rank, traps etc)?
-                    const validation = isValidMoveBB(fromIndex, toIndex, pieceTypeIndex, playerToDeclareFor, currentBitboards);
-                    if (validation.valid) {
-                        canMakeValidCapture = true;
-                        break; // Found a valid capture for this piece
-                    }
-                }
-            }
-
-            if (canMakeValidCapture) {
-                newHungryBBforPlayer = setBit(newHungryBBforPlayer, fromIndex);
-                const coords = bitIndexToCoord(fromIndex); // Get coords only if needed for map
-                if (coords) newlyHungryMap[coords] = true;
-            }
-
-            pieceBoard = clearBit(pieceBoard, fromIndex); // Move to next piece of this type
+    // Calculate the new hungry state without modifying global state yet
+    const newlyHungryMap = calculateHungryMap(playerToDeclareFor, currentBitboards);
+    let newHungryBBforPlayer = BB_EMPTY;
+    for (const coords in newlyHungryMap) {
+        const idx = coordToBitIndex(coords);
+        if (idx !== -1) {
+            newHungryBBforPlayer = setBit(newHungryBBforPlayer, idx);
         }
     }
 
@@ -1233,7 +1397,7 @@ function declareHungryAnimalsBB(playerToDeclareFor, currentBitboards) {
     while (tempChangedBB !== BB_EMPTY) {
         const lsb = lsbIndex(tempChangedBB);
         if (lsb === -1) break;
-        // Toggle the hash for each changed square
+        // Toggle the global hash for each changed square
         gameState.zobristHash = toggleHungryKeyBB(gameState.zobristHash, playerToDeclareFor, lsb);
         tempChangedBB = clearBit(tempChangedBB, lsb);
     }
@@ -1242,27 +1406,28 @@ function declareHungryAnimalsBB(playerToDeclareFor, currentBitboards) {
     // Update the global game state's hungry board for this player AFTER updating hash
     gameState.hungryBB[playerToDeclareFor] = newHungryBBforPlayer;
 
-    return newlyHungryMap;
+    return newlyHungryMap; // Return the map calculated earlier
 }
 
 /**
  * Checks if hungry pieces (from the start of the turn) failed to capture and removes them.
- * Modifies the passed bitboards and hash directly. **Assumes Zobrist hashing for hungry state is NOT used.**
+ * Modifies the passed bitboards and hash directly. Updates hash ONLY for piece removal.
  * Depends on: getBit, clearBit, lsbIndex, bitIndexToCoord (bitboardUtils.js),
- *             togglePieceKeyBB (gameState.js - only for piece removal),
- *             coordToBitIndex, BB_IDX, PLAYERS (constants.js).
+ *             togglePieceKeyBB (gameState.js), coordToBitIndex,
+ *             BB_IDX, PLAYERS (constants.js), BB_EMPTY.
  *
  * @param {string} playerWhoMoved - The player who just completed their move.
- * @param {string} movedPieceFromCoords - The starting coords of the piece that just moved. Can be null if move wasn't by a piece (e.g., hypothetical future scenarios).
+ * @param {string} movedPieceFromCoords - The starting coords of the piece that just moved. Can be null.
  * @param {boolean} wasAttack - True if the move performed was a capture.
  * @param {bigint} hungryBBAtTurnStart - The hungry bitboard for playerWhoMoved *before* their turn began.
  * @param {bigint[]} currentBitboards - The current bitboard state array (will be modified).
- * @param {bigint} currentHash - The current Zobrist hash (will be modified).
- * @returns {{ starvedPiecesCoords: string[], modifiedBitboards: bigint[], modifiedHash: bigint }} Result object.
+ * @param {bigint} currentHash - The current Zobrist hash (will be modified for piece removal only).
+ * @returns {{ starvedPiecesCoords: string[], modifiedBitboards: bigint[], modifiedHash: bigint, starvedIndices: number[] }} Result object including starved indices.
  */
 function checkAndApplyStarvationBB(playerWhoMoved, movedPieceFromCoords, wasAttack, hungryBBAtTurnStart, currentBitboards, currentHash) {
     const fnName = "checkAndApplyStarvationBB";
     const starvedPiecesCoords = [];
+    const starvedIndices = []; // Keep track of indices
     let tempHungryBB = hungryBBAtTurnStart; // Work on the input BB state
     let modifiedBitboards = [...currentBitboards]; // Copy to modify
     let modifiedHash = currentHash;
@@ -1282,6 +1447,7 @@ function checkAndApplyStarvationBB(playerWhoMoved, movedPieceFromCoords, wasAtta
             if (hungryCoords) {
                  console.log(`STARVE: ${playerWhoMoved} piece at ${hungryCoords} (idx ${hungryIndex}) was hungry but did not attack.`);
                  starvedPiecesCoords.push(hungryCoords);
+                 starvedIndices.push(hungryIndex); // Store index
 
                  // Find piece type to remove
                  let starvedPieceTypeIndex = -1;
@@ -1300,7 +1466,7 @@ function checkAndApplyStarvationBB(playerWhoMoved, movedPieceFromCoords, wasAtta
                     modifiedBitboards[playerBBIndex] = clearBit(modifiedBitboards[playerBBIndex], hungryIndex);
                     // Occupied board will be fully recalculated later
 
-                    // Update hash for the removed piece
+                    // Update hash for the removed piece ONLY
                     modifiedHash = togglePieceKeyBB(modifiedHash, starvedPieceTypeIndex, hungryIndex);
                  } else {
                      console.error(`[${fnName}] Error: Could not find piece type for starving piece at ${hungryCoords} (index ${hungryIndex})`);
@@ -1315,8 +1481,8 @@ function checkAndApplyStarvationBB(playerWhoMoved, movedPieceFromCoords, wasAtta
     // Recalculate occupied board fully after all potential removals
     modifiedBitboards[BB_IDX.OCCUPIED] = modifiedBitboards[BB_IDX.ORANGE_PIECES] | modifiedBitboards[BB_IDX.YELLOW_PIECES];
 
-
-    return { starvedPiecesCoords, modifiedBitboards, modifiedHash };
+    // Return starved indices as well
+    return { starvedPiecesCoords, modifiedBitboards, modifiedHash, starvedIndices };
 }
 
 

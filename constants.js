@@ -10,7 +10,7 @@
  * Set to false to disable debug features for production.
  * @type {boolean}
  */
-const DEBUG_MODE = true; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
+const DEBUG_MODE = false; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
 
 // --- Game Board Dimensions ---
 /** @type {number} Number of rows on the board. */

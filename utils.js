@@ -177,10 +177,10 @@ function generateMoveDescription(notation) {
 
 /**
  * Generates the tooltip content string for a piece based on its rank.
- * Uses emojis for rank and special abilities.
+ * Uses emojis wrapped in spans for rank and special abilities for consistent styling.
  * Depends on: RANK_EMOJI, SPECIAL_ABILITIES (constants.js).
  * @param {number} rank - The rank of the piece (1-8).
- * @returns {string|null} The tooltip content string (e.g., "R: 1️⃣\nSP: 💧🐾🌱") or null if rank is invalid.
+ * @returns {string|null} The tooltip content string (e.g., "Rank: <span class='tooltip-rank-icon'>1️⃣</span>\nPower: <span class='tooltip-power-icon'>💧🐾🌱</span>") or null if rank is invalid.
  */
 function generatePieceInfoTooltipContent(rank) {
     if (rank < 1 || rank > 8) return null;
@@ -189,9 +189,11 @@ function generatePieceInfoTooltipContent(rank) {
     const abilities = SPECIAL_ABILITIES[rank];
     const abilitiesEmoji = abilities?.emoji || ''; // Get emoji string or empty if none
 
-    let content = `R: ${rankEmoji}`;
+    // Wrap rank emoji in span for styling
+    let content = `Rank: <span class="tooltip-rank-icon">${rankEmoji}</span>`; // Changed "R:" to "Rank:", added span
     if (abilitiesEmoji) {
-        content += `\nSP: ${abilitiesEmoji}`; // Use newline for separation
+        // Wrap power emoji in span for styling
+        content += `\nPower: <span class="tooltip-power-icon">${abilitiesEmoji}</span>`; // Changed "SP:" to "Power:", added span
     }
     return content;
 }

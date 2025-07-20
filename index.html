@@ -33,7 +33,7 @@
 
 <body>
 
-    <h1>CLESTO: The Jungle Chess Game</h1>
+    <!-- <h1>CLESTO: The Jungle Chess Game</h1> -->
 
     <main id="game-container" role="main">
         <!-- Game Board Section -->
@@ -101,14 +101,18 @@
             </div>
 
             <!-- Move Log -->
-            <h3>Move Log</h3>
-            <button id="copy-log-button" class="copy-button" title="Copy move log to clipboard">Copy Log 📋</button>
-            <div id="move-log" class="scrollable-log" aria-live="polite"></div>
+            <div class="log-container"> <!-- Added container -->
+                <h3>Move Log</h3>
+                <div id="move-log" class="scrollable-log" aria-live="polite"></div>
+                <button id="copy-log-button" class="copy-button" title="Copy move log to clipboard">Copy</button> <!-- Moved & text changed -->
+            </div>
 
             <!-- Board State -->
-            <h3>Board State</h3>
-            <button id="copy-state-button" class="copy-button" title="Copy board state hash to clipboard">Copy Board State 📋</button>
-            <div id="board-state-log"></div>
+            <div class="log-container"> <!-- Added container -->
+                <h3>Board State</h3>
+                <div id="board-state-log"></div>
+                <button id="copy-state-button" class="copy-button" title="Copy board state hash to clipboard">Copy</button> <!-- Moved & text changed -->
+            </div>
 
             <!-- Load From State Section -->
             <div class="load-state-container">
