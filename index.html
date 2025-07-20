@@ -4080,7 +4080,7 @@
 
         /**
          * Finds the best move for the AI using the Minimax algorithm at the root level.
-         * Considers hungry piece obligations. INCLUDES DEBUG LOGGING FOR STATIC EVAL.
+         * Considers hungry piece obligations. PRIORITIZES statically evaluated near-win moves.
          * @param {number} depth - The maximum search depth for Minimax.
          * @param {object} currentGameState - The current state of the game.
          * @param {string} playerForMax - The player the AI is playing as (always YELLOW here).
@@ -4089,8 +4089,10 @@
         function findBestMoveMinimax(depth, currentGameState, playerForMax) {
             let bestScore = -Infinity;
             let bestMove = null;
+            let bestNearWinMove = null; // Track the best move leading to a near-win state
+            let bestNearWinStaticScore = -Infinity; // Track the static score of that near-win state
 
-            const possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer, true); // Simulating check
+            const possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer, true);
             const opponentDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
 
             if (possibleMoves.length === 0) {
@@ -4111,9 +4113,7 @@
             // --- Handle Hungry Pieces Obligation ---
             const hungryMoves = possibleMoves.filter(move => currentGameState.board[move.from]?.isHungry);
             let movesToConsider = possibleMoves;
-            // --- DEBUG: Log considered moves ---
             console.log(`[findBestMove] Initial possible moves: ${possibleMoves.map(m => m.from + '->' + m.to).join(', ')}`);
-            // --- END DEBUG ---
             if (hungryMoves.length > 0) {
                 const attackingHungryMoves = hungryMoves.filter(move => !!currentGameState.board[move.to]);
                 if (attackingHungryMoves.length > 0) {
@@ -4124,52 +4124,79 @@
                     movesToConsider = hungryMoves;
                 }
             }
-             // --- DEBUG: Log considered moves after hunger filter ---
              console.log(`[findBestMove] Moves considered after hunger filter: ${movesToConsider.map(m => m.from + '->' + m.to).join(', ')}`);
-             // --- END DEBUG ---
 
 
             // --- Evaluate Moves using Minimax ---
             for (const move of movesToConsider) {
-                // Simulate move AND get move info
                 const { nextState, moveInfo } = simulateMove(currentGameState, move);
 
-                // --- DEBUG: Evaluate static score AFTER this move ---
+                // --- Get Static Eval AFTER the move ---
                 const staticEvalScore = evaluateBoard(nextState.board, playerForMax, moveInfo);
                 console.log(`[findBestMove DEBUG] Move ${move.from}->${move.to}: Static Eval Score = ${staticEvalScore.toFixed(2)}`);
-                // --- END DEBUG ---
 
-                // Call minimax for the opponent's turn (minimizing player)
+                // --- Run Minimax ---
                 const score = minimax(depth - 1, nextState, false, -Infinity, Infinity, playerForMax);
+                console.log(`[findBestMove DEBUG] Move ${move.from}->${move.to}: Minimax Score (Depth ${depth}) = ${score.toFixed(2)}`);
 
-                 // --- DEBUG: Log Minimax score for this move ---
-                 console.log(`[findBestMove DEBUG] Move ${move.from}->${move.to}: Minimax Score (Depth ${depth}) = ${score.toFixed(2)}`);
-                 // --- END DEBUG ---
-
-                let currentScore = score;
-                if (Math.abs(score) < AI_WIN_SCORE / 1.1 && Math.abs(score) < Math.abs(AI_LOSE_SCORE) / 1.1 ) {
-                    currentScore += (Math.random() - 0.5) * 0.1;
+                // --- Check if this move leads to a near-win state (based on static eval) ---
+                // Use a threshold slightly lower than the win-adjacent bonus itself
+                const nearWinThreshold = AI_DEN_PROXIMITY_BONUS_SQ * 0.8; // e.g., 80% of the bonus
+                if (staticEvalScore >= nearWinThreshold) {
+                    // Is this near-win state better than the previous best near-win state?
+                    // Or is it the first one we found?
+                    if (bestNearWinMove === null || staticEvalScore > bestNearWinStaticScore) {
+                       // Check if Minimax didn't reveal an immediate forced loss after this move
+                       // (Allow a drop in score, but not a catastrophic one)
+                       const catastrophicDropThreshold = AI_LOSE_SCORE / 2; // e.g., -5000
+                       if (score > catastrophicDropThreshold) {
+                            console.log(`[findBestMove DEBUG] *** Prioritizing Near-Win Move: ${move.from}->${move.to} (Static: ${staticEvalScore.toFixed(2)}, Minimax: ${score.toFixed(2)}) ***`);
+                            bestNearWinMove = move;
+                            bestNearWinStaticScore = staticEvalScore;
+                       } else {
+                            console.log(`[findBestMove DEBUG] Near-Win Move ${move.from}->${move.to} discarded (Minimax score ${score.toFixed(2)} too low - potential trap/loss).`);
+                       }
+                    }
                 }
 
-                // Update best score and move found so far at this top level
+                // --- Standard Best Move Update (using Minimax score) ---
+                let currentScore = score;
+                if (Math.abs(score) < AI_WIN_SCORE / 1.1 && Math.abs(score) < Math.abs(AI_LOSE_SCORE) / 1.1 ) {
+                    currentScore += (Math.random() - 0.5) * 0.1; // Add randomness for non-critical moves
+                }
                 if (currentScore > bestScore) {
-                     // --- DEBUG: Log new best move ---
-                     console.log(`[findBestMove DEBUG] *** New Best Move: ${move.from}->${move.to} (Score: ${currentScore.toFixed(2)} > Best: ${bestScore.toFixed(2)}) ***`);
-                     // --- END DEBUG ---
+                     console.log(`[findBestMove DEBUG] --- New Best Standard Move: ${move.from}->${move.to} (Minimax Score: ${currentScore.toFixed(2)} > Best: ${bestScore.toFixed(2)}) ---`);
                     bestScore = currentScore;
                     bestMove = move;
                 }
+            } // End loop through movesToConsider
+
+            // --- Final Decision: Prioritize near-win move if found and viable ---
+            if (bestNearWinMove) {
+                 console.log(`[findBestMove] FINAL DECISION: Prioritizing Near-Win Move ${bestNearWinMove.from}->${bestNearWinMove.to}`);
+                 // We use the near-win move, but report the actual minimax score for consistency if needed elsewhere
+                 const finalMinimaxScoreForNearWin = minimax(depth - 1, simulateMove(currentGameState, bestNearWinMove).nextState, false, -Infinity, Infinity, playerForMax);
+                 return { move: bestNearWinMove, score: finalMinimaxScoreForNearWin };
             }
 
-            // Fallback if no move was selected
+            // --- Otherwise, use the best move found via standard Minimax ---
+            if (bestMove) {
+                 console.log(`[findBestMove] FINAL DECISION: Using Standard Best Move ${bestMove.from}->${bestMove.to}`);
+                 return { move: bestMove, score: bestScore };
+            }
+
+            // --- Fallback if somehow no move was selected ---
             if (!bestMove && possibleMoves.length > 0) {
-                 console.warn("Minimax didn't find a best move among 'movesToConsider' (all might lead to loss). Picking random valid move as fallback.");
+                 console.warn("Minimax didn't find ANY viable best move. Picking random valid move as fallback.");
                  const fallbackSet = movesToConsider.length > 0 ? movesToConsider : possibleMoves;
                  bestMove = fallbackSet[Math.floor(Math.random() * fallbackSet.length)];
                  bestScore = -Infinity;
+                 return { move: bestMove, score: bestScore };
             }
 
-            return { move: bestMove, score: bestScore };
+             // Should be unreachable if possibleMoves.length > 0
+             console.error("AI findBestMove: Reached end without selecting a move!");
+             return null;
         }
 
         /**
