@@ -6,25 +6,45 @@
     <title>CLESTO: The Jungle Chess Game</title>
     <style>
         /* --- General Styling --- */
+        :root {
+            --orange-color: #E67E22;
+            --yellow-color: #F1C40F;
+            --dark-orange: #D35400;
+            --dark-yellow: #F39C12;
+            --light-gray: #f8f9fa;
+            --medium-gray: #dee2e6;
+            --dark-gray: #343a40;
+            --cell-highlight-move: rgba(0, 255, 0, 0.7);
+            --cell-highlight-attack: rgba(255, 0, 0, 0.7);
+            --piece-select-glow: rgba(0, 191, 255, 0.9);
+            --hungry-outline: rgba(255, 0, 0, 0.8);
+        }
+
         body {
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
-            background-color: #f0f0f0;
-            padding: 20px; /* Add some padding */
+            background-color: var(--light-gray);
+            color: var(--dark-gray);
+            padding: 20px;
+            margin: 0;
         }
 
         h1 {
-            margin-bottom: 15px;
+            margin-bottom: 20px;
+            color: var(--dark-gray);
+            font-weight: 300;
+            border-bottom: 1px solid var(--medium-gray);
+            padding-bottom: 10px;
         }
 
         #game-container {
             display: flex;
-            flex-wrap: wrap; /* Allow wrapping on smaller screens */
-            justify-content: center; /* Center items when wrapped */
-            gap: 20px;
-            margin-top: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px; /* Increased gap */
+            margin-top: 10px;
         }
 
         /* --- Board Styling --- */
@@ -34,158 +54,239 @@
             display: grid;
             grid-template-columns: repeat(7, 1fr);
             grid-template-rows: repeat(9, 1fr);
-            /* border: 3px solid #333; */ /* Remove default border, image has one */
             border: none;
-            position: relative; /* For absolute positioning of pieces */
-
-            /* Use the official board image */
-            background-image: url('https://staticjw.com/clesto/board.png'); /* Make sure this file exists */
-            background-size: cover; /* Scale the image to cover the container */
-            background-position: center; /* Center the image */
+            position: relative;
+            background-image: url('https://staticjw.com/clesto/board.png');
+            background-size: cover;
+            background-position: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); /* Added shadow */
+            border-radius: 5px; /* Slight rounding */
         }
 
         .cell {
             width: 70px;
             height: 70px;
-            /* border: 1px solid rgba(0, 0, 0, 0.1); */ /* Make grid lines very faint or remove */
-            border: none; /* Remove cell borders to rely on image */
+            border: none;
             box-sizing: border-box;
             position: relative;
             display: flex;
             justify-content: center;
             align-items: center;
-            font-size: 0.7em;
-            color: rgba(255, 255, 255, 0.3); /* Very faint coordinates */
+            font-size: 0.6em; /* Smaller coordinates */
+            color: rgba(0, 0, 0, 0.3); /* Darker faint coordinates */
             user-select: none;
-            background-clip: padding-box; /* Important for background overlay effects */
+            background-clip: padding-box;
+            /* transition for highlight effects */
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
         }
 
-        /* --- Special Cell Styling (Overlays) --- */
-        /* Use rgba backgrounds to overlay on the board image */
-        .water::before { content: ''; position: absolute; top:0; left:0; width: 100%; height: 100%; background-color: rgba(100, 150, 255, 0.3); pointer-events: none; }
-        .trap-orange::before { content: ''; position: absolute; top:0; left:0; width: 100%; height: 100%; background-color: rgba(255, 150, 150, 0.4); border: 2px dashed rgba(255, 0, 0, 0.7); box-sizing: border-box; pointer-events: none; }
-        .trap-yellow::before { content: ''; position: absolute; top:0; left:0; width: 100%; height: 100%; background-color: rgba(255, 255, 150, 0.4); border: 2px dashed rgba(255, 255, 0, 0.7); box-sizing: border-box; pointer-events: none; }
-        .den-orange::before { content: ''; position: absolute; top:0; left:0; width: 100%; height: 100%; background-color: rgba(255, 100, 0, 0.5); border: 3px solid rgba(200, 80, 0, 0.8); box-sizing: border-box; pointer-events: none; }
-        .den-yellow::before { content: ''; position: absolute; top:0; left:0; width: 100%; height: 100%; background-color: rgba(255, 255, 0, 0.5); border: 3px solid rgba(218, 165, 32, 0.8); box-sizing: border-box; pointer-events: none; }
+        /* --- Special Cell Styling (Overlays with ::before) --- */
+        .cell::before {
+             content: ''; position: absolute; top:0; left:0; width: 100%; height: 100%;
+             pointer-events: none; box-sizing: border-box; border-radius: inherit;
+             opacity: 0.8; /* Slightly reduce overlay opacity */
+        }
+        .water::before { background-color: rgba(100, 150, 255, 0.3); }
+        .trap-orange::before { background-color: rgba(255, 150, 150, 0.3); border: 2px dashed var(--hungry-outline); }
+        .trap-yellow::before { background-color: rgba(255, 255, 150, 0.3); border: 2px dashed var(--dark-yellow); }
+        .den-orange::before { background-color: rgba(255, 100, 0, 0.4); border: 3px solid var(--dark-orange); }
+        .den-yellow::before { background-color: rgba(255, 255, 0, 0.4); border: 3px solid var(--dark-yellow); }
 
 
         /* --- Piece Styling (for Image Tokens) --- */
         .piece {
-            width: 55px;  /* Adjust size as needed */
-            height: 55px; /* Adjust size as needed */
+            width: 55px;
+            height: 55px;
             position: absolute;
             cursor: grab;
             display: flex;
             justify-content: center;
             align-items: center;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.25); /* Softer shadow */
             z-index: 10;
-            transition: transform 0.1s ease-out, box-shadow 0.2s ease, border 0.2s ease; /* Smooth transitions */
+            transition: transform 0.15s ease-out, box-shadow 0.2s ease, outline 0.2s ease; /* Smooth transitions */
             user-select: none;
             overflow: hidden;
-            background-color: transparent;
-            border: none; /* No default border */
-            /* Add a very subtle border to lift piece from background */
-            border: 1px solid rgba(0,0,0,0.1);
-            border-radius: 4px; /* Optional: slightly rounded corners */
+            background: none;
+            border: none;
+            border-radius: 50%; /* Make pieces circular */
         }
 
-        /* Style for the image inside the piece container */
         .piece img {
             max-width: 100%;
             max-height: 100%;
             display: block;
-            pointer-events: none; /* Ensures drag events are handled by the parent div */
+            pointer-events: none;
+            border-radius: 50%; /* Ensure image inside is also round */
         }
 
         .piece.dragging {
-            opacity: 0.7;
+            opacity: 0.6;
             cursor: grabbing;
-            z-index: 100; /* Ensure it's on top while dragging */
+            z-index: 100;
+            transform: scale(1.1); /* Slightly enlarge while dragging */
+             box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
 
         /* --- Visual Feedback on Cells and Pieces --- */
         .valid-move {
-            /* Overlay effect on the cell */
-            box-shadow: inset 0 0 0 3px rgba(0, 255, 0, 0.7); /* Inset green border */
-            background-color: rgba(0, 255, 0, 0.15); /* Slight green tint */
+            box-shadow: inset 0 0 0 3px var(--cell-highlight-move);
+            background-color: rgba(0, 255, 0, 0.1); /* Subtler tint */
         }
         .valid-attack {
-            /* Overlay effect on the cell */
-            box-shadow: inset 0 0 0 3px rgba(255, 0, 0, 0.7); /* Inset red border */
-            background-color: rgba(255, 0, 0, 0.15); /* Slight red tint */
+            box-shadow: inset 0 0 0 3px var(--cell-highlight-attack);
+            background-color: rgba(255, 0, 0, 0.1); /* Subtler tint */
         }
         .selected {
-            /* Apply shadow to the piece container div */
-            box-shadow: 0 0 10px 4px rgba(0, 191, 255, 0.9); /* Brighter cyan shadow */
-            border: 1px solid rgba(0, 191, 255, 0.9); /* Matching border */
+            box-shadow: 0 0 0 4px var(--piece-select-glow); /* Use border-like shadow */
+            /* border: 1px solid var(--piece-select-glow); REMOVED */
         }
         .hungry {
-            /* Apply border to the piece container div */
-            /* Use outline instead of border to avoid layout shifts */
-             outline: 3px dashed rgba(255, 0, 0, 0.8);
-             outline-offset: 1px; /* Optional offset */
-            /* border: 3px dashed red !important; */ /* Avoid !important if possible */
-            /* box-sizing: border-box; */ /* Not needed with outline */
+             outline: 3px dashed var(--hungry-outline);
+             outline-offset: 2px; /* More offset */
         }
 
         /* --- UI Info Panel --- */
         #ui-info {
-            width: 280px; /* Slightly wider */
-            border: 1px solid #ccc;
-            padding: 15px;
-            background-color: #fff;
-            height: fit-content; /* Adjust height automatically */
-            box-shadow: 1px 1px 4px rgba(0,0,0,0.1);
-            border-radius: 5px;
+            width: 300px; /* Wider */
+            border: none; /* Remove border */
+            padding: 20px;
+            background-color: #ffffff; /* White background */
+            height: fit-content;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); /* Consistent shadow */
+            border-radius: 8px; /* More rounded */
+            display: flex;
+            flex-direction: column;
         }
         #ui-info h2, #ui-info h3 {
             margin-top: 0;
-            margin-bottom: 10px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 5px;
+            margin-bottom: 15px; /* Increased spacing */
+            border-bottom: 1px solid var(--medium-gray);
+            padding-bottom: 8px;
+            font-weight: 400; /* Lighter headings */
+            color: var(--dark-gray);
         }
+         #ui-info h3 {
+             margin-top: 15px; /* Add space above logs */
+         }
         #ui-info p {
-            margin: 8px 0;
+            margin: 10px 0;
+            line-height: 1.5;
         }
         #turn-indicator {
-            font-weight: bold;
+            font-weight: 600; /* Bold */
+            padding: 3px 6px;
+            border-radius: 4px;
+            color: white;
+        }
+        #turn-indicator.orange { background-color: var(--orange-color); }
+        #turn-indicator.yellow { background-color: var(--yellow-color); color: var(--dark-gray);}
+        #turn-indicator.game-over { background-color: #dc3545; } /* Red for game over */
+
+        /* Buttons */
+         .button-container {
+             margin-top: auto; /* Push buttons to bottom */
+             padding-top: 20px; /* Space above buttons */
+             display: flex;
+             gap: 10px; /* Space between buttons */
+             justify-content: space-around;
+         }
+        .game-button { /* Common style for buttons */
+            padding: 10px 18px;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            font-size: 0.95em;
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+            background-color: #6c757d; /* Default gray */
+            color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .game-button:hover {
+             box-shadow: 0 3px 6px rgba(0,0,0,0.15);
         }
         #reset-button {
-            margin-top: 15px;
-            padding: 8px 15px;
-            cursor: pointer;
-            border-radius: 4px;
-            border: 1px solid #aaa;
-            background-color: #eee;
+            background-color: #007bff; /* Blue */
         }
-         #reset-button:hover {
-            background-color: #ddd;
+        #reset-button:hover { background-color: #0056b3; }
+        #undo-button {
+            background-color: #ffc107; /* Yellow/Amber */
+            color: var(--dark-gray);
+        }
+        #undo-button:hover { background-color: #e0a800; }
+        #undo-button:disabled {
+             background-color: #adb5bd; /* Disabled gray */
+             cursor: not-allowed;
+             box-shadow: none;
         }
 
+
+        /* Move Log Styling */
         #move-log {
-            height: 200px;
-            overflow-y: scroll;
-            border: 1px solid #eee;
-            padding: 5px 8px;
+            height: 220px; /* Slightly taller */
+            overflow-y: auto; /* Use auto instead of scroll */
+            border: 1px solid var(--medium-gray);
+            border-radius: 5px; /* Rounded log */
+            padding: 8px 10px;
             margin-top: 10px;
             font-size: 0.9em;
-            background-color: #fdfdfd;
-            line-height: 1.4;
+            background-color: #ffffff;
+            line-height: 1.6; /* Better readability */
         }
-         #move-log div:nth-child(odd) {
-             background-color: #f9f9f9;
+        .log-entry {
+             padding: 3px 0;
+             border-bottom: 1px dashed var(--medium-gray); /* Separator */
+        }
+         .log-entry:last-child {
+             border-bottom: none;
+         }
+         .log-entry .turn-number {
+             display: inline-block;
+             width: 25px; /* Align turn numbers */
+             font-weight: bold;
+             color: #6c757d;
+             margin-right: 5px;
+         }
+         .log-entry .log-orange,
+         .log-entry .log-yellow {
+             display: inline-block;
+             min-width: 60px; /* Ensure some space */
+             padding: 2px 5px;
+             border-radius: 3px;
+             margin: 0 3px;
+             text-align: center;
+         }
+         .log-entry .log-orange {
+             background-color: rgba(230, 126, 34, 0.15); /* Light orange bg */
+             color: var(--dark-orange);
+             border: 1px solid rgba(230, 126, 34, 0.3);
+         }
+         .log-entry .log-yellow {
+             background-color: rgba(241, 196, 15, 0.15); /* Light yellow bg */
+             color: #c78b02; /* Darker yellow text */
+              border: 1px solid rgba(241, 196, 15, 0.3);
+         }
+         .log-entry .placeholder { /* Style for '...' */
+             color: #adb5bd;
+             font-style: italic;
+             display: inline-block;
+             min-width: 60px;
+             text-align: center;
          }
 
+        /* Board State Log */
         #board-state-log {
             margin-top: 10px;
-            border: 1px solid #eee;
-            padding: 8px;
-            font-size: 0.8em;
+            border: 1px solid var(--medium-gray);
+            border-radius: 5px;
+            padding: 10px;
+            font-size: 0.75em; /* Smaller font */
+            font-family: monospace; /* Monospace for better alignment if needed */
             word-wrap: break-word;
-            background-color: #fdfdfd;
-            max-height: 100px; /* Limit height */
-            overflow-y: auto; /* Add scroll if needed */
+            background-color: #ffffff;
+            max-height: 90px;
+            overflow-y: auto;
+            line-height: 1.4;
         }
 
     </style>
@@ -209,13 +310,15 @@
             <h3>Board State</h3>
             <div id="board-state-log"></div>
 
-             <button id="reset-button">Reset Game</button>
+             <!-- Button Container -->
+             <div class="button-container">
+                <button id="undo-button" class="game-button" disabled>Undo Move</button>
+                <button id="reset-button" class="game-button">Reset Game</button>
+             </div>
         </div>
     </div>
 
     <!-- Piece image assets -->
-    <!-- Make sure filenames match your actual files -->
-    <!-- If files are in an 'images' subfolder, add 'images/' prefix to src -->
     <div id="piece-assets" style="display: none;">
         <!-- Orange Pieces -->
         <img data-piece="O_8" src="https://staticjw.com/clesto/animals/elephant-orange.png" alt="Orange Elephant (8)">
@@ -240,137 +343,75 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Elements ---
             const boardElement = document.getElementById('board');
             const turnIndicator = document.getElementById('turn-indicator');
             const statusMessage = document.getElementById('status-message');
             const resetButton = document.getElementById('reset-button');
+            const undoButton = document.getElementById('undo-button'); // Get Undo button
             const moveLogElement = document.getElementById('move-log');
             const boardStateLogElement = document.getElementById('board-state-log');
             const pieceAssetContainer = document.getElementById('piece-assets');
 
+            // --- Constants ---
             const ROWS = 9;
             const COLS = 7;
-            const CELL_SIZE_W = 70; // Width from CSS
-            const CELL_SIZE_H = 70; // Height from CSS
-            const PIECE_SIZE_W = 55; // Width from CSS
-            const PIECE_SIZE_H = 55; // Height from CSS
-
-
-            // --- Game State ---
-            let gameState = {};
-
-            // --- Constants ---
+            const CELL_SIZE_W = 70;
+            const CELL_SIZE_H = 70;
+            const PIECE_SIZE_W = 55;
+            const PIECE_SIZE_H = 55;
             const PLAYERS = { ORANGE: 'orange', YELLOW: 'yellow' };
-            // Rank mapping (consistent with Dou Shou Qi)
-            const ANIMAL_RANKS = { Elephant: 8, Lion: 7, Tiger: 6, Leopard: 5, Dog: 4, Cat: 3, Wolf: 2, Rat: 1 };
-            const RANK_TO_NAME = { 8: 'Elephant', 7: 'Lion', 6: 'Tiger', 5: 'Leopard', 4: 'Dog', 3: 'Cat', 2: 'Wolf', 1: 'Rat'}; // Use Wolf for rank 2
-            // Inverted map for board state string generation
+            const RANK_TO_NAME = { 8: 'Elephant', 7: 'Lion', 6: 'Tiger', 5: 'Leopard', 4: 'Dog', 3: 'Cat', 2: 'Wolf', 1: 'Rat'};
             const RANK_TO_CODE = { 8: '8', 7: '7', 6: '6', 5: '5', 4: '4', 3: '3', 2: '2', 1: '1' };
-
-            // Define special abilities based on rank number
              const SPECIAL_ABILITIES = {
-                 // rank: { name: '...', properties... }
-                1: { name: 'Rat', rank: 1, swims: true, attacksElephant: true },
-                2: { name: 'Wolf', rank: 2 }, // Use Wolf for Rank 2
-                3: { name: 'Cat', rank: 3 },
-                4: { name: 'Dog', rank: 4, swims: true },
-                5: { name: 'Leopard', rank: 5, jumpH: true }, // Horizontal jump only
-                6: { name: 'Tiger', rank: 6, jumpH: true, jumpV: true }, // Both jumps
-                7: { name: 'Lion', rank: 7, jumpH: true, jumpV: true },  // Both jumps
-                8: { name: 'Elephant', rank: 8 }
+                1: { name: 'Rat', rank: 1, swims: true, attacksElephant: true }, 2: { name: 'Wolf', rank: 2 },
+                3: { name: 'Cat', rank: 3 }, 4: { name: 'Dog', rank: 4, swims: true },
+                5: { name: 'Leopard', rank: 5, jumpH: true }, 6: { name: 'Tiger', rank: 6, jumpH: true, jumpV: true },
+                7: { name: 'Lion', rank: 7, jumpH: true, jumpV: true }, 8: { name: 'Elephant', rank: 8 }
             };
-
-            // Initial board setup - Orange at bottom (Rows 1-3), Yellow at top (Rows 7-9)
-            // Coordinates: a1 = bottom-left
-            const INITIAL_SETUP = {
-                // Orange pieces (Player 1 - Bottom)
-                'a3': { player: PLAYERS.ORANGE, rank: 8 }, // Elephant
-                'g1': { player: PLAYERS.ORANGE, rank: 7 }, // Lion
-                'a1': { player: PLAYERS.ORANGE, rank: 6 }, // Tiger
-                'e3': { player: PLAYERS.ORANGE, rank: 5 }, // Leopard
-                'f2': { player: PLAYERS.ORANGE, rank: 4 }, // Dog
-                'c3': { player: PLAYERS.ORANGE, rank: 3 }, // Cat
-                'b2': { player: PLAYERS.ORANGE, rank: 2 }, // Wolf
-                'g3': { player: PLAYERS.ORANGE, rank: 1 }, // Rat
-
-                // Yellow pieces (Player 2 - Top)
-                'g7': { player: PLAYERS.YELLOW, rank: 8 }, // Elephant
-                'a9': { player: PLAYERS.YELLOW, rank: 7 }, // Lion
-                'g9': { player: PLAYERS.YELLOW, rank: 6 }, // Tiger
-                'c7': { player: PLAYERS.YELLOW, rank: 5 }, // Leopard
-                'b8': { player: PLAYERS.YELLOW, rank: 4 }, // Dog
-                'e7': { player: PLAYERS.YELLOW, rank: 3 }, // Cat
-                'f8': { player: PLAYERS.YELLOW, rank: 2 }, // Wolf
-                'a7': { player: PLAYERS.YELLOW, rank: 1 }  // Rat
-            };
-
+            const INITIAL_SETUP = { /* ... same as before ... */
+                'a3': { player: PLAYERS.ORANGE, rank: 8 }, 'g1': { player: PLAYERS.ORANGE, rank: 7 },
+                'a1': { player: PLAYERS.ORANGE, rank: 6 }, 'e3': { player: PLAYERS.ORANGE, rank: 5 },
+                'f2': { player: PLAYERS.ORANGE, rank: 4 }, 'c3': { player: PLAYERS.ORANGE, rank: 3 },
+                'b2': { player: PLAYERS.ORANGE, rank: 2 }, 'g3': { player: PLAYERS.ORANGE, rank: 1 },
+                'g7': { player: PLAYERS.YELLOW, rank: 8 }, 'a9': { player: PLAYERS.YELLOW, rank: 7 },
+                'g9': { player: PLAYERS.YELLOW, rank: 6 }, 'c7': { player: PLAYERS.YELLOW, rank: 5 },
+                'b8': { player: PLAYERS.YELLOW, rank: 4 }, 'e7': { player: PLAYERS.YELLOW, rank: 3 },
+                'f8': { player: PLAYERS.YELLOW, rank: 2 }, 'a7': { player: PLAYERS.YELLOW, rank: 1 }
+             };
             const WATER_SQUARES = new Set(['b4', 'c4', 'e4', 'f4', 'b5', 'c5', 'e5', 'f5', 'b6', 'c6', 'e6', 'f6']);
-            const TRAPS = {
-                // Coords of squares that act as traps for the *opponent* entering them
-                orange: new Set(['c9', 'd8', 'e9']), // Yellow enters Orange traps near Yellow den
-                yellow: new Set(['c1', 'd2', 'e1'])  // Orange enters Yellow traps near Orange den
-            };
-             // Trap squares defined by their location, not player owner. The effect applies to any piece landing there.
-             const ALL_TRAP_SQUARES = new Set([...TRAPS.orange, ...TRAPS.yellow]);
+            const TRAPS = { orange: new Set(['c9', 'd8', 'e9']), yellow: new Set(['c1', 'd2', 'e1']) };
+            const ALL_TRAP_SQUARES = new Set([...TRAPS.orange, ...TRAPS.yellow]);
+            const DENS = { orange: 'd1', yellow: 'd9' };
 
-            const DENS = {
-                orange: 'd1', // Orange player's den (bottom)
-                yellow: 'd9'  // Yellow player's den (top)
-            };
+            // --- Game State Variables ---
+            let gameState = {};
+            let gameHistory = []; // Array to store previous game states for undo
 
-            // --- Helper Functions ---
-            function getCoords(row, col) {
-                if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return null;
-                // Row 0 corresponds to rank 9, Row 8 corresponds to rank 1
-                return `${String.fromCharCode(97 + col)}${ROWS - row}`; // e.g., (0,0) -> a9, (8,0) -> a1
-            }
-
-            function getRowCol(coords) {
-                if (!coords || coords.length < 2) return null;
-                const col = coords.charCodeAt(0) - 97; // 'a' -> 0, 'b' -> 1, ...
-                const rowNum = parseInt(coords.substring(1));
-                if (isNaN(rowNum)) return null;
-                const row = ROWS - rowNum; // '9' -> 0, '1' -> 8
-                if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return null;
-                return { row, col };
-            }
-
-             function getPieceData(coords) {
-                 return gameState.board[coords] || null;
-             }
-
-            function getPieceElementId(coords) {
-                return `piece-${coords}`;
-            }
-
-            function getCellElementId(coords) {
-                return `cell-${coords}`;
-            }
+            // --- Helper Functions (getCoords, getRowCol, getPieceData, getPieceElementId, getCellElementId) ---
+            // ... (Keep these exactly the same as your previous version) ...
+             function getCoords(row, col) { if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return null; return `${String.fromCharCode(97 + col)}${ROWS - row}`; }
+             function getRowCol(coords) { if (!coords || coords.length < 2) return null; const col = coords.charCodeAt(0) - 97; const rowNum = parseInt(coords.substring(1)); if (isNaN(rowNum)) return null; const row = ROWS - rowNum; if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return null; return { row, col }; }
+             function getPieceData(coords) { return gameState.board[coords] || null; }
+             function getPieceElementId(coords) { return `piece-${coords}`; }
+             function getCellElementId(coords) { return `cell-${coords}`; }
 
             // --- Board Creation ---
-            function createBoard() {
-                boardElement.innerHTML = ''; // Clear previous board
+            function createBoard() { /* ... same as before ... */
+                 boardElement.innerHTML = '';
                 for (let r = 0; r < ROWS; r++) {
                     for (let c = 0; c < COLS; c++) {
                         const cell = document.createElement('div');
                         const coords = getCoords(r, c);
                         cell.id = getCellElementId(coords);
                         cell.classList.add('cell');
-                        cell.dataset.coords = coords;
-                        cell.dataset.row = r;
-                        cell.dataset.col = c;
-                        // cell.textContent = coords; // Optional: display coords text
-
-                        // Add classes for special terrain based on image
+                        cell.dataset.coords = coords; cell.dataset.row = r; cell.dataset.col = c;
                         if (WATER_SQUARES.has(coords)) cell.classList.add('water');
-                        if (TRAPS.orange.has(coords)) cell.classList.add('trap-yellow'); // Yellow Den's traps
-                        if (TRAPS.yellow.has(coords)) cell.classList.add('trap-orange'); // Orange Den's traps
+                        if (TRAPS.orange.has(coords)) cell.classList.add('trap-yellow');
+                        if (TRAPS.yellow.has(coords)) cell.classList.add('trap-orange');
                         if (DENS.orange === coords) cell.classList.add('den-orange');
                         if (DENS.yellow === coords) cell.classList.add('den-yellow');
-
                         boardElement.appendChild(cell);
-
-                        // Add drop event listeners
                         cell.addEventListener('dragover', handleDragOver);
                         cell.addEventListener('dragenter', handleDragEnter);
                         cell.addEventListener('dragleave', handleDragLeave);
@@ -380,878 +421,410 @@
             }
 
             // --- Piece Creation & Placement ---
-            function createPieceElement(pieceData, coords) {
+            function createPieceElement(pieceData, coords) { /* ... same as before, including border-radius fix */
                 const pieceElement = document.createElement('div');
                 pieceElement.id = getPieceElementId(coords);
-                pieceElement.classList.add('piece'); // Basic piece class
-                // pieceElement.classList.add(pieceData.player); // Optional: add player class if needed for specific styling
-                pieceElement.dataset.rank = pieceData.rank;
-                pieceElement.dataset.player = pieceData.player;
-                pieceElement.dataset.coords = coords;
-                pieceElement.draggable = true;
-
-                // Find the corresponding image asset
+                pieceElement.classList.add('piece');
+                pieceElement.dataset.rank = pieceData.rank; pieceElement.dataset.player = pieceData.player;
+                pieceElement.dataset.coords = coords; pieceElement.draggable = true;
                 const pieceKey = `${pieceData.player === PLAYERS.ORANGE ? 'O' : 'Y'}_${pieceData.rank}`;
                 const asset = pieceAssetContainer.querySelector(`[data-piece="${pieceKey}"]`);
-
                 if (asset && asset.tagName === 'IMG') {
-                    const img = asset.cloneNode(true); // Clone the image asset
-                    img.style.display = 'block'; // Ensure it's visible
-                    pieceElement.appendChild(img);
-                    // Ensure container is transparent if image is used
-                    pieceElement.style.backgroundColor = 'transparent';
-                    pieceElement.style.border = 'none'; // Remove any default border from CSS
+                    const img = asset.cloneNode(true); img.style.display = 'block';
+                    pieceElement.appendChild(img); pieceElement.style.background = 'none'; pieceElement.style.border = 'none';
+                    // pieceElement.style.borderRadius = '50%'; // Already applied via CSS .piece rule
                 } else {
-                    // Fallback text if no image asset found
                     console.warn("Image asset not found for:", pieceKey);
                     pieceElement.textContent = `${pieceData.player === PLAYERS.ORANGE ? 'O' : 'Y'}${pieceData.rank}`;
-                     // Add color classes for fallback text rendering
-                     pieceElement.classList.add(pieceData.player);
+                    pieceElement.classList.add(pieceData.player); // Add color class for fallback text
                 }
-
                 pieceElement.addEventListener('dragstart', handleDragStart);
                 pieceElement.addEventListener('dragend', handleDragEnd);
-
                 return pieceElement;
             }
-
-             function placePieces() {
-                // Clear existing pieces from the board DOM
+            function placePieces() { /* ... same as before ... */
                 document.querySelectorAll('.piece').forEach(p => p.remove());
-
                 for (const coords in gameState.board) {
                     if (gameState.board.hasOwnProperty(coords)) {
                         const pieceData = gameState.board[coords];
-                        if (!pieceData) { // Safety check for null/undefined entries
-                             console.warn(`Attempted to place null piece at ${coords}`);
-                             continue;
-                         }
+                        if (!pieceData) { console.warn(`Attempted to place null piece at ${coords}`); continue; }
                         const pieceElement = createPieceElement(pieceData, coords);
                         positionElementOnBoard(pieceElement, coords);
                         boardElement.appendChild(pieceElement);
-                        // Update hungry visual status from gameState
                         updateHungryVisual(coords, pieceData.isHungry || false);
                     }
                 }
             }
-
-            function positionElementOnBoard(element, coords) {
-                const rc = getRowCol(coords);
-                if (!rc) {
-                    console.error("Cannot position element, invalid coords:", coords);
-                    return;
-                }
-                 const { row, col } = rc;
-                 // Calculate center position
-                 const x = col * CELL_SIZE_W + (CELL_SIZE_W - PIECE_SIZE_W) / 2;
-                 const y = row * CELL_SIZE_H + (CELL_SIZE_H - PIECE_SIZE_H) / 2;
-                 element.style.left = `${x}px`;
-                 element.style.top = `${y}px`;
-                 // Ensure the piece's data-coords is up-to-date
-                 element.dataset.coords = coords;
+            function positionElementOnBoard(element, coords) { /* ... same as before ... */
+                const rc = getRowCol(coords); if (!rc) { console.error("Cannot position element, invalid coords:", coords); return; }
+                const { row, col } = rc;
+                const x = col * CELL_SIZE_W + (CELL_SIZE_W - PIECE_SIZE_W) / 2;
+                const y = row * CELL_SIZE_H + (CELL_SIZE_H - PIECE_SIZE_H) / 2;
+                element.style.left = `${x}px`; element.style.top = `${y}px`;
+                element.dataset.coords = coords;
             }
+
+            // --- Game State Save/Load for Undo ---
+            function saveGameState() {
+                 // Create a deep copy of the relevant parts of the gameState
+                 const stateToSave = {
+                      board: JSON.parse(JSON.stringify(gameState.board)),
+                      currentPlayer: gameState.currentPlayer,
+                      turnNumber: gameState.turnNumber,
+                      // We don't need to save boardStateHistory for undo, it's for repetition check
+                      // We also don't strictly need moveHistory for undo, but keep it for log consistency
+                      moveHistory: JSON.parse(JSON.stringify(gameState.moveHistory)),
+                      gameOver: gameState.gameOver,
+                      winner: gameState.winner
+                 };
+                  // Also save hunger state explicitly if not perfectly inferrable
+                  // Note: The board object already contains isHungry flags, so it's saved.
+
+                 gameHistory.push(stateToSave);
+                 updateUndoButtonState(); // Enable undo after first move
+            }
+
+            function loadGameState(stateToLoad) {
+                if (!stateToLoad) return;
+                // Restore the game state properties
+                gameState.board = stateToLoad.board; // Already deep copied when saved
+                gameState.currentPlayer = stateToLoad.currentPlayer;
+                gameState.turnNumber = stateToLoad.turnNumber;
+                gameState.moveHistory = stateToLoad.moveHistory; // Restore move history for log
+                gameState.gameOver = stateToLoad.gameOver;
+                gameState.winner = stateToLoad.winner;
+
+                 // Recalculate boardStateHistory up to this point if needed for perfect repetition check after undo
+                 // Simple approach: Clear future history. Repetition check will work going forward.
+                 // More complex: Rebuild history (skipped for now)
+                  gameState.boardStateHistory = {}; // Reset repetition counts from this point back
+                  rebuildBoardStateHistoryFromMoveHistory(); // Rebuild based on restored history
+
+
+                // --- Update UI and Board based on loaded state ---
+                placePieces(); // Redraw pieces based on restored board state
+                rebuildMoveLog(); // Rebuild visual log from restored moveHistory
+                updateUI(); // Update turn indicator etc.
+                logBoardState(); // Log the restored state string
+                updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn.`); // Update status message
+                enableDragDrop(); // Ensure interaction is possible
+                 updateUndoButtonState(); // Update button state
+                 clearHighlights();
+            }
+
+             function rebuildMoveLog() {
+                 moveLogElement.innerHTML = ''; // Clear visual log
+                 gameState.moveHistory.forEach(entry => {
+                      addLogEntry(entry.turn, entry.orange, entry.yellow);
+                 });
+                 moveLogElement.scrollTop = moveLogElement.scrollHeight; // Scroll to bottom
+             }
+
+             function rebuildBoardStateHistoryFromMoveHistory() {
+                 // This function would simulate moves from start based on history to rebuild
+                 // the boardStateHistory counts correctly. For simplicity, we skip this
+                 // and just reset it. The repetition rule will function correctly going forward
+                 // from the undone state, but might miss a 3-fold repetition that occurred
+                 // across the undo boundary if not rebuilt fully.
+                 // Simple reset is done in loadGameState.
+                 console.log("Board state history reset after undo.");
+             }
 
 
             // --- Game Initialization ---
             function initializeGame() {
                 console.log("Initializing game...");
                 gameState = {
-                    board: JSON.parse(JSON.stringify(INITIAL_SETUP)), // Deep copy
+                    board: JSON.parse(JSON.stringify(INITIAL_SETUP)),
                     currentPlayer: PLAYERS.ORANGE,
                     turnNumber: 1,
-                    moveHistory: [], // Stores { turn, orange, yellow } notation strings
-                    boardStateHistory: {}, // Stores { stateString: count } for repetition check
-                    // hungryAnimals: {}, // Stores { coords: true } - this will be calculated each turn end
+                    moveHistory: [], // Log structure: { turn, orange, yellow }
+                    boardStateHistory: {}, // For repetition: { stateString: count }
                     gameOver: false,
                     winner: null
                 };
+                gameHistory = []; // Clear undo history
 
-                // Initialize internal piece state (like isHungry and abilities)
-                Object.keys(gameState.board).forEach(coords => {
-                     const piece = gameState.board[coords];
-                     piece.isHungry = false; // Reset hunger
+                Object.keys(gameState.board).forEach(coords => { /* Add abilities and isHungry=false */
+                     const piece = gameState.board[coords]; piece.isHungry = false;
                      const abilities = SPECIAL_ABILITIES[piece.rank];
-                     if (abilities) {
-                        piece.swims = abilities.swims || false;
-                        piece.attacksElephant = abilities.attacksElephant || false;
-                        piece.jumpH = abilities.jumpH || false;
-                        piece.jumpV = abilities.jumpV || false;
-                     } else {
-                          console.warn(`No special abilities defined for rank ${piece.rank}`);
-                          piece.swims = false; piece.attacksElephant = false; piece.jumpH = false; piece.jumpV = false;
-                     }
+                     if (abilities) { piece.swims = abilities.swims || false; piece.attacksElephant = abilities.attacksElephant || false; piece.jumpH = abilities.jumpH || false; piece.jumpV = abilities.jumpV || false; }
+                     else { piece.swims = false; piece.attacksElephant = false; piece.jumpH = false; piece.jumpV = false; }
                 });
 
-
-                createBoard();
-                placePieces();
-                moveLogElement.innerHTML = ''; // Clear move log
-                boardStateLogElement.textContent = ''; // Clear board state display
+                createBoard(); placePieces();
+                moveLogElement.innerHTML = ''; boardStateLogElement.textContent = '';
                 updateStatus("Game Started. Orange to move.");
-                updateUI();
-                clearHighlights();
-                logBoardState(); // Log initial state and add to history
-                 enableDragDrop(); // Ensure board is interactive
+                updateUI(); clearHighlights();
+                logBoardState(); // Log initial state & add to repetition history
+                enableDragDrop();
+                 updateUndoButtonState(); // Initially disabled
                 console.log("Game Initialized. Orange starts.");
             }
 
-            // --- Drag and Drop Handlers ---
-            let draggedPieceElement = null;
-            let sourceCoords = null;
-
-            function handleDragStart(e) {
-                 // Find the piece container div, not the image itself
-                 const pieceDiv = e.target.closest('.piece');
-                 if (!pieceDiv) return;
-
-                const player = pieceDiv.dataset.player;
-                if (player !== gameState.currentPlayer || gameState.gameOver) {
-                    e.preventDefault();
-                    return;
-                }
-
-                draggedPieceElement = pieceDiv; // The draggable element is the container div
-                sourceCoords = draggedPieceElement.dataset.coords;
-                setTimeout(() => draggedPieceElement.classList.add('dragging'), 0);
-                e.dataTransfer.effectAllowed = 'move';
-                // e.dataTransfer.setData('text/plain', sourceCoords); // Optional
-
-                highlightValidMoves(sourceCoords);
-                draggedPieceElement.classList.add('selected');
-            }
-
-            function handleDragEnd(e) {
-                if (draggedPieceElement) {
-                    draggedPieceElement.classList.remove('dragging', 'selected');
-                }
-                draggedPieceElement = null;
-                sourceCoords = null;
-                clearHighlights(); // Clear highlights always on drag end
-            }
-
-            function handleDragOver(e) {
-                e.preventDefault(); // Necessary to allow dropping
-                e.dataTransfer.dropEffect = 'move';
-            }
-
-            function handleDragEnter(e) {
-                e.preventDefault();
-                const targetCell = e.target.closest('.cell');
-                if (!targetCell) return;
-
-                // Temporarily apply hover visual cue if it's a marked valid target
-                if (targetCell.classList.contains('valid-move-highlight')) {
-                    if (targetCell.classList.contains('valid-attack-highlight')) {
-                         targetCell.classList.add('valid-attack'); // Use attack styling
-                    } else {
-                        targetCell.classList.add('valid-move'); // Use move styling
-                    }
-                }
-            }
-
-            function handleDragLeave(e) {
-                const targetCell = e.target.closest('.cell');
-                 if (targetCell) {
-                    // Remove only the temporary hover effects, not the marker classes
-                    targetCell.classList.remove('valid-move', 'valid-attack');
-                 }
-            }
-
-            function handleDrop(e) {
-                e.preventDefault();
-                // DO NOT clear highlights yet
-
-                if (!draggedPieceElement) {
-                    // If for some reason drag ended prematurely, clear visual cues
-                    clearHighlights();
-                    return;
-                }
-
-                const targetCell = e.target.closest('.cell');
-
-                // Check if the drop target is valid FIRST, using the marker class
-                if (!targetCell || !targetCell.classList.contains('valid-move-highlight')) {
-                    console.log("Drop on invalid target (cell not found or not highlighted).");
-                    updateStatus("Invalid move destination.");
-                    // Clear highlights visually now since the drop failed / ended drag
-                    clearHighlights(); // Clear here on failure/invalid target
-                    return; // Stop processing the drop
-                }
-
-                // --- Drop target is valid ---
-                const targetCoords = targetCell.dataset.coords;
-
-                // Now clear all highlights as we are proceeding with the move
-                clearHighlights(); // <--- Clear highlights HERE, AFTER validation passes
-
-                // --- Perform the move ---
-                console.log(`Performing move from ${sourceCoords} to ${targetCoords}`); // Add log for confirmation
-                performMove(sourceCoords, targetCoords);
-
-                // Note: draggedPieceElement and sourceCoords are reset in handleDragEnd
-            }
-             function enableDragDrop() {
-                 boardElement.style.pointerEvents = 'auto';
-             }
-             function disableDragDrop() {
-                 boardElement.style.pointerEvents = 'none';
-             }
+            // --- Drag and Drop Handlers (handleDragStart, handleDragEnd, handleDragOver, handleDragEnter, handleDragLeave, handleDrop) ---
+            // ... (Keep these exactly the same as your corrected version from previous step) ...
+             let draggedPieceElement = null; let sourceCoords = null;
+             function handleDragStart(e) { const pieceDiv = e.target.closest('.piece'); if (!pieceDiv) return; const player = pieceDiv.dataset.player; if (player !== gameState.currentPlayer || gameState.gameOver) { e.preventDefault(); return; } draggedPieceElement = pieceDiv; sourceCoords = draggedPieceElement.dataset.coords; setTimeout(() => draggedPieceElement.classList.add('dragging'), 0); e.dataTransfer.effectAllowed = 'move'; highlightValidMoves(sourceCoords); draggedPieceElement.classList.add('selected'); }
+             function handleDragEnd(e) { if (draggedPieceElement) { draggedPieceElement.classList.remove('dragging', 'selected'); } draggedPieceElement = null; sourceCoords = null; clearHighlights(); }
+             function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+             function handleDragEnter(e) { e.preventDefault(); const targetCell = e.target.closest('.cell'); if (!targetCell) return; if (targetCell.classList.contains('valid-move-highlight')) { if (targetCell.classList.contains('valid-attack-highlight')) { targetCell.classList.add('valid-attack'); } else { targetCell.classList.add('valid-move'); } } }
+             function handleDragLeave(e) { const targetCell = e.target.closest('.cell'); if (targetCell) { targetCell.classList.remove('valid-move', 'valid-attack'); } }
+             function handleDrop(e) { e.preventDefault(); if (!draggedPieceElement) { clearHighlights(); return; } const targetCell = e.target.closest('.cell'); if (!targetCell || !targetCell.classList.contains('valid-move-highlight')) { console.log("Drop on invalid target."); updateStatus("Invalid move destination."); clearHighlights(); return; } const targetCoords = targetCell.dataset.coords; clearHighlights(); console.log(`Performing move from ${sourceCoords} to ${targetCoords}`); performMove(sourceCoords, targetCoords); }
+             function enableDragDrop() { boardElement.style.pointerEvents = 'auto'; }
+             function disableDragDrop() { boardElement.style.pointerEvents = 'none'; }
 
 
             // --- Move Logic ---
             function performMove(fromCoords, toCoords) {
-                const piece = getPieceData(fromCoords); // Use helper to get piece data
+                 // 0. Save current state BEFORE making changes (for undo)
+                 saveGameState();
 
-                 // Basic validation (should be redundant if drag start worked, but good practice)
-                 if (!piece || piece.player !== gameState.currentPlayer || gameState.gameOver) {
-                     console.error("Invalid move attempt: Conditions not met.");
-                     updateStatus("Cannot move now.");
-                     return;
-                 }
-
-                 // Validate the move using game rules
+                const piece = getPieceData(fromCoords);
+                 if (!piece || piece.player !== gameState.currentPlayer || gameState.gameOver) { console.error("Invalid move attempt."); updateStatus("Cannot move now."); gameHistory.pop(); updateUndoButtonState(); return; } // Pop invalid state save
                 const validationResult = isValidMove(fromCoords, toCoords, piece);
-                if (!validationResult.valid) {
-                    console.log(`Invalid move: ${fromCoords} to ${toCoords} - ${validationResult.reason}`);
-                    updateStatus(`Invalid move: ${validationResult.reason}`);
-                    // Optionally flash the target cell red
-                    flashCell(toCoords, 'red');
-                    return;
-                }
+                if (!validationResult.valid) { console.log(`Invalid move: ${validationResult.reason}`); updateStatus(`Invalid move: ${validationResult.reason}`); flashCell(toCoords, 'red'); gameHistory.pop(); updateUndoButtonState(); return; } // Pop invalid state save
 
                 // --- Move is Valid ---
                 const targetPiece = getPieceData(toCoords);
                 const isAttack = !!targetPiece;
-                let notation = `${RANK_TO_CODE[piece.rank]}`; // Start notation with rank number
-                let statusAction = ""; // For the status message
+                const playerWhoMoved = gameState.currentPlayer; // Store who is moving NOW
+                let notation = `${RANK_TO_CODE[piece.rank]}`;
+                let statusAction = "";
 
+                // 1. Starvation Check
+                const starvedPiecesCoords = checkAndApplyStarvation(fromCoords, isAttack);
 
-                 // 1. Starvation Check (Applied *after* checking if the hungry piece attacked this turn)
-                 // We check this *before* updating the board state, using the current player's pieces
-                 // that *were* hungry from the *last* turn's declaration.
-                 const starvedPiecesCoords = checkAndApplyStarvation(fromCoords, isAttack);
+                // 2. Update Board State (Internal)
+                if (isAttack) { console.log(`${piece.player}... captures ...`); notation += 'x'; statusAction = ` captures ${RANK_TO_NAME[targetPiece.rank]} at ${toCoords}`; delete gameState.board[toCoords]; }
+                gameState.board[toCoords] = piece; delete gameState.board[fromCoords];
 
-
-                // 2. Update Board State (Internal Representation)
-                 // Important: Handle piece removal *before* placing the new one if it's an attack
-                 if (isAttack) {
-                    console.log(`${piece.player} ${RANK_TO_NAME[piece.rank]}@${fromCoords} captures ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]}@${toCoords}`);
-                    notation += 'x'; // Add capture symbol
-                    statusAction = ` captures ${RANK_TO_NAME[targetPiece.rank]} at ${toCoords}`;
-                     // Remove captured piece data
-                     delete gameState.board[toCoords];
-                 }
-                 // Move the piece data
-                 gameState.board[toCoords] = piece;
-                 delete gameState.board[fromCoords];
-
-                // 3. Update DOM (Visual Board)
-                if (isAttack) {
-                    const capturedElement = document.getElementById(getPieceElementId(toCoords));
-                    if (capturedElement) capturedElement.remove();
-                }
+                // 3. Update DOM (Visual)
+                if (isAttack) { const capturedElement = document.getElementById(getPieceElementId(toCoords)); if (capturedElement) capturedElement.remove(); }
                 const pieceElement = document.getElementById(getPieceElementId(fromCoords));
-                if (pieceElement) {
-                    pieceElement.id = getPieceElementId(toCoords); // Update ID
-                    positionElementOnBoard(pieceElement, toCoords); // Move visually
-                } else {
-                    console.error("!!! Could not find piece element for", fromCoords, " Re-placing all pieces.");
-                     // Fallback: redraw all pieces (less efficient)
-                     placePieces();
-                }
+                if (pieceElement) { pieceElement.id = getPieceElementId(toCoords); positionElementOnBoard(pieceElement, toCoords); }
+                else { console.error("!!! Piece element not found", fromCoords); placePieces(); }
 
-                // 4. Finalize Notation (add target coords)
+                // 4. Finalize Notation
                 notation += toCoords;
 
-                 // 5. Check Win Condition (Entering Opponent's Den)
-                const opponentDen = gameState.currentPlayer === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+                // 5. Check Win Condition
+                const opponentDen = playerWhoMoved === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
                 if (toCoords === opponentDen) {
-                    gameState.winner = gameState.currentPlayer;
-                    gameState.gameOver = true;
-                    updateStatus(`${gameState.currentPlayer.toUpperCase()} wins by reaching the den!${statusAction}`);
-                     disableDragDrop(); // Game over, stop interaction
-                     logMove(notation); // Log the winning move
-                     logBoardState(); // Log final state
-                    updateUI();
-                    return; // --- GAME OVER ---
+                    gameState.winner = playerWhoMoved; gameState.gameOver = true;
+                    updateStatus(`${playerWhoMoved.toUpperCase()} wins by reaching the den!${statusAction}`);
+                    disableDragDrop(); logMove(notation, playerWhoMoved); logBoardState(); updateUI(); updateUndoButtonState(); return; // GAME OVER
                 }
 
-
-                 // 6. Hungry Declaration (End of Turn)
-                 // Declare which opponent pieces can attack *next* turn
-                 const opponent = gameState.currentPlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+                // 6. Hungry Declaration
+                 const opponent = playerWhoMoved === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
                  const { hungryCount, hungryPiecesMap } = declareHungryAnimals(opponent);
-
-                 // Update the isHungry state for *all* pieces for the *next* turn
-                 Object.keys(gameState.board).forEach(coords => {
-                     const p = gameState.board[coords];
-                     const isNowHungry = !!hungryPiecesMap[coords];
-                     p.isHungry = isNowHungry; // Set state for next turn's check
-                     updateHungryVisual(coords, isNowHungry); // Update visuals immediately
+                 Object.keys(gameState.board).forEach(coords => { // Update hunger state for *next* turn
+                      const p = gameState.board[coords]; if (!p) return; // Piece might have been captured
+                      const isNowHungry = !!hungryPiecesMap[coords];
+                      p.isHungry = isNowHungry;
+                      updateHungryVisual(coords, isNowHungry);
                  });
+                 if (hungryCount > 0) { notation += '+'.repeat(hungryCount); }
 
-                 if (hungryCount > 0) {
-                    notation += '+'.repeat(hungryCount);
-                 }
-
-
-                // 7. Starvation Notation (add 'x' for each piece that starved *this* turn)
+                // 7. Starvation Notation
                 notation += 'x'.repeat(starvedPiecesCoords.length);
-                 if (starvedPiecesCoords.length > 0) {
-                     statusAction += ` (${starvedPiecesCoords.length} animal${starvedPiecesCoords.length > 1 ? 's' : ''} starved)`;
-                 }
-
+                 if (starvedPiecesCoords.length > 0) { statusAction += ` (${starvedPiecesCoords.length} animal${starvedPiecesCoords.length > 1 ? 's' : ''} starved)`; }
 
                 // 8. Log Move and Board State
-                logMove(notation);
-                const boardStateString = logBoardState(); // Also adds to history
-
+                 logMove(notation, playerWhoMoved); // Pass player who moved
+                 const boardStateString = logBoardState();
 
                 // 9. Repetition Check
                  const orangeCount = Object.values(gameState.board).filter(p => p && p.player === PLAYERS.ORANGE).length;
                  const yellowCount = Object.values(gameState.board).filter(p => p && p.player === PLAYERS.YELLOW).length;
-                 // Player restricted by repetition rule: player with more animals, or Orange if tied.
                  const restrictedPlayer = orangeCount > yellowCount ? PLAYERS.ORANGE : (yellowCount > orangeCount ? PLAYERS.YELLOW : PLAYERS.ORANGE);
-
-                 if (gameState.boardStateHistory[boardStateString] > 3 && gameState.currentPlayer === restrictedPlayer) {
-                     // The player *about to move* is the restricted one and has repeated the state > 3 times
-                     gameState.winner = opponent; // The *other* player wins
+                 // Check based on the state *after* the move, for the *next* player.
+                  const nextPlayer = opponent; // The player whose turn it will be next
+                 if (gameState.boardStateHistory[boardStateString] >= 3 && nextPlayer === restrictedPlayer) {
+                     // If the player *whose turn it is now* would create the 3rd repetition, *they* lose.
+                     gameState.winner = playerWhoMoved; // The player who just moved wins
                      gameState.gameOver = true;
-                     updateStatus(`${opponent.toUpperCase()} wins due to repetition rule!`);
-                      disableDragDrop();
-                     updateUI();
-                     console.log("Repetition rule invoked!");
-                     return; // --- GAME OVER ---
+                     updateStatus(`${playerWhoMoved.toUpperCase()} wins! ${nextPlayer.toUpperCase()} forced repetition.`);
+                      disableDragDrop(); updateUI(); updateUndoButtonState(); console.log("Repetition rule invoked!"); return; // GAME OVER
                  }
 
 
                 // 10. Switch Player
                 gameState.currentPlayer = opponent;
 
+                 // 11. Increment Turn Number *after* Yellow has moved
+                 if (playerWhoMoved === PLAYERS.YELLOW) {
+                     gameState.turnNumber++;
+                      console.log("Incrementing turn number to:", gameState.turnNumber);
+                 }
 
-                // 11. Update UI for Next Turn
+                // 12. Update UI for Next Turn
                 updateStatus(`${opponent.toUpperCase()}'s turn.${statusAction}`);
                 updateUI();
+                 updateUndoButtonState(); // Update button state after move
 
 
-                // 12. Trigger AI if it's Yellow's turn
+                // 13. Trigger AI if it's Yellow's turn
                 if (gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
-                    disableDragDrop(); // Prevent human input while AI thinks
-                    // Use setTimeout to allow UI to update before AI potentially freezes browser
-                    setTimeout(triggerAIMove, 200); // Short delay (adjust as needed)
+                    disableDragDrop();
+                     undoButton.disabled = true; // Disable undo during AI thinking
+                    setTimeout(triggerAIMove, 300); // Slightly longer delay for AI feel
                 } else if (!gameState.gameOver) {
-                     enableDragDrop(); // Ensure human can play
+                     enableDragDrop();
+                     undoButton.disabled = false; // Re-enable undo for human player
                 }
             }
 
-            // --- Move Validation ---
-             function isValidMove(fromCoords, toCoords, piece) {
-                if (fromCoords === toCoords) return { valid: false, reason: "Cannot move to the same square." };
-
-                const fromRC = getRowCol(fromCoords);
-                const toRC = getRowCol(toCoords);
-                if (!fromRC || !toRC) return { valid: false, reason: "Invalid coordinates." };
-
-                const targetPieceData = getPieceData(toCoords); // Data of piece at target
-                const pieceRank = piece.rank;
-                const pieceAbilities = SPECIAL_ABILITIES[pieceRank] || {}; // Use defined abilities
-
-                // 1. Check Occupancy by Own Piece or Own Den
-                if (targetPieceData && targetPieceData.player === piece.player) {
-                    return { valid: false, reason: "Cannot move to square occupied by your own piece." };
-                }
-                const ownDen = piece.player === PLAYERS.ORANGE ? DENS.orange : DENS.yellow;
-                if (toCoords === ownDen) {
-                    return { valid: false, reason: "Cannot enter your own den." };
-                }
-
-                // 2. Calculate Movement Delta
-                const dr = Math.abs(fromRC.row - toRC.row);
-                const dc = Math.abs(fromRC.col - toRC.col);
-                const isOrthogonal = (dr === 1 && dc === 0) || (dr === 0 && dc === 1);
-
-                // 3. Water Movement Rules
-                const isMovingToWater = WATER_SQUARES.has(toCoords);
-                const isMovingFromWater = WATER_SQUARES.has(fromCoords);
-
-                // Only swimmers can enter/move within/leave water via standard move
-                if ((isMovingToWater || isMovingFromWater) && isOrthogonal && !pieceAbilities.swims) {
-                    return { valid: false, reason: "Only Rat and Dog can move on water squares." };
-                }
-                // Non-swimmers cannot enter water at all
-                 if (isMovingToWater && !pieceAbilities.swims) {
-                      return { valid: false, reason: "This animal cannot enter water." };
-                 }
+            // --- Move Validation (isValidMove, checkJumpPathClear) ---
+            // ... (Keep these exactly the same as your previous version) ...
+             function isValidMove(fromCoords, toCoords, piece) { if (fromCoords === toCoords) return { valid: false, reason: "Cannot move to the same square." }; const fromRC = getRowCol(fromCoords); const toRC = getRowCol(toCoords); if (!fromRC || !toRC) return { valid: false, reason: "Invalid coordinates." }; const targetPieceData = getPieceData(toCoords); const pieceRank = piece.rank; const pieceAbilities = SPECIAL_ABILITIES[pieceRank] || {}; if (targetPieceData && targetPieceData.player === piece.player) { return { valid: false, reason: "Cannot move to square occupied by your own piece." }; } const ownDen = piece.player === PLAYERS.ORANGE ? DENS.orange : DENS.yellow; if (toCoords === ownDen) { return { valid: false, reason: "Cannot enter your own den." }; } const dr = Math.abs(fromRC.row - toRC.row); const dc = Math.abs(fromRC.col - toRC.col); const isOrthogonal = (dr === 1 && dc === 0) || (dr === 0 && dc === 1); const isMovingToWater = WATER_SQUARES.has(toCoords); const isMovingFromWater = WATER_SQUARES.has(fromCoords); if ((isMovingToWater || isMovingFromWater) && isOrthogonal && !pieceAbilities.swims) { return { valid: false, reason: "Only Rat and Dog can move on water squares." }; } if (isMovingToWater && !pieceAbilities.swims) { return { valid: false, reason: "This animal cannot enter water." }; } let isJump = false; let isJumpValid = false; const isVerticalJump = dc === 0 && dr === 4 && (fromRC.col === 1 || fromRC.col === 2 || fromRC.col === 4 || fromRC.col === 5); const isHorizontalJump = dr === 0 && dc === 3 && (fromRC.row === 3 || fromRC.row === 4 || fromRC.row === 5); if (isVerticalJump || isHorizontalJump) { if ((isVerticalJump && !pieceAbilities.jumpV) || (isHorizontalJump && !pieceAbilities.jumpH)) { return { valid: false, reason: "This animal cannot jump in that direction." }; } if (isMovingFromWater || isMovingToWater) { return { valid: false, reason: "Cannot jump from or into water." }; } if (!checkJumpPathClear(fromRC, toRC, piece.player)) { return { valid: false, reason: "Jump path is blocked by an opponent in the water." }; } isJump = true; isJumpValid = true; } if (!isOrthogonal && !isJumpValid) { return { valid: false, reason: "Invalid move distance or type." }; } if (targetPieceData) { if (targetPieceData.player === piece.player) { return { valid: false, reason: "Cannot attack own piece." }; } const attackerRank = pieceRank; let defenderRank = targetPieceData.rank; if (ALL_TRAP_SQUARES.has(toCoords)) { console.log(`Defender ${RANK_TO_NAME[defenderRank]} at ${toCoords} is in a trap square, rank reduced to 0.`); defenderRank = 0; } const isRatAttackElephant = pieceRank === 1 && targetPieceData.rank === 8; if (isRatAttackElephant) { if (isMovingFromWater) { return { valid: false, reason: "Rat cannot attack Elephant from water." }; } return { valid: true }; } if (attackerRank < defenderRank) { return { valid: false, reason: `Cannot attack higher-ranked animal (${attackerRank} vs ${defenderRank}).` }; } } return { valid: true }; }
+             function checkJumpPathClear(fromRC, toRC, attackerPlayer) { const opponent = attackerPlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE; const startRow = Math.min(fromRC.row, toRC.row); const endRow = Math.max(fromRC.row, toRC.row); const startCol = Math.min(fromRC.col, toRC.col); const endCol = Math.max(fromRC.col, toRC.col); if (fromRC.col === toRC.col) { for (let r = startRow + 1; r < endRow; r++) { const coords = getCoords(r, fromRC.col); if (!WATER_SQUARES.has(coords)) return false; const blockingPiece = getPieceData(coords); if (blockingPiece && blockingPiece.player === opponent) return false; } } else if (fromRC.row === toRC.row) { for (let c = startCol + 1; c < endCol; c++) { const coords = getCoords(fromRC.row, c); if (!WATER_SQUARES.has(coords)) return false; const blockingPiece = getPieceData(coords); if (blockingPiece && blockingPiece.player === opponent) return false; } } else { return false; } return true; }
 
 
-                // 4. Jump Move Check (Lion, Tiger, Leopard over water)
-                let isJump = false;
-                let isJumpValid = false;
-                // Define jump spans (hardcoded for standard board)
-                const isVerticalJump = dc === 0 && dr === 4 && (fromRC.col === 1 || fromRC.col === 2 || fromRC.col === 4 || fromRC.col === 5); // Col B, C, E, F
-                const isHorizontalJump = dr === 0 && dc === 3 && (fromRC.row === 3 || fromRC.row === 4 || fromRC.row === 5); // Row 4, 5, 6
-
-                if (isVerticalJump || isHorizontalJump) {
-                     // Check if the piece *can* jump in this direction
-                     if ((isVerticalJump && !pieceAbilities.jumpV) || (isHorizontalJump && !pieceAbilities.jumpH)) {
-                          return { valid: false, reason: "This animal cannot jump in that direction." };
-                     }
-                     // Jumps must start and end on land
-                     if (isMovingFromWater || isMovingToWater) {
-                          return { valid: false, reason: "Cannot jump from or into water." };
-                     }
-                     // Check path clear
-                     if (!checkJumpPathClear(fromRC, toRC, piece.player)) {
-                          return { valid: false, reason: "Jump path is blocked by an opponent in the water." };
-                     }
-                     // If all checks pass, it's a valid jump
-                     isJump = true;
-                     isJumpValid = true;
-                }
+            // --- Hungry/Starve Logic (declareHungryAnimals, checkAndApplyStarvation, getPotentialMoveDestinations) ---
+            // ... (Keep these exactly the same as your previous version) ...
+              function declareHungryAnimals(playerToDeclareFor) { let hungryCount = 0; const hungryPiecesMap = {}; const opponent = playerToDeclareFor === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE; for (const coords in gameState.board) { const piece = gameState.board[coords]; if (piece && piece.player === playerToDeclareFor) { const destinations = getPotentialMoveDestinations(coords, piece); for (const targetCoords of destinations) { const targetPiece = gameState.board[targetCoords]; if (targetPiece && targetPiece.player === opponent) { const validation = isValidMove(coords, targetCoords, piece); if (validation.valid) { hungryPiecesMap[coords] = true; hungryCount++; console.log(`DECLARE HUNGRY: ${playerToDeclareFor} ${RANK_TO_NAME[piece.rank]} at ${coords} can attack ${targetCoords}`); break; } } } } } return { hungryCount, hungryPiecesMap }; }
+              function checkAndApplyStarvation(movedPieceCoords, wasAttack) { const currentPlayer = gameState.currentPlayer; const starvedPiecesCoords = []; for (const coords in gameState.board) { const piece = gameState.board[coords]; if (piece && piece.player === currentPlayer && piece.isHungry) { const didThisPieceAttack = (coords === movedPieceCoords) && wasAttack; if (!didThisPieceAttack) { console.log(`STARVE: ${currentPlayer} ${RANK_TO_NAME[piece.rank]} at ${coords} starved (was hungry, did not attack).`); starvedPiecesCoords.push(coords); } else { console.log(`SAVED: ${currentPlayer} ${RANK_TO_NAME[piece.rank]} at ${coords} attacked, avoided starvation.`); } } } starvedPiecesCoords.forEach(coords => { const starvedElement = document.getElementById(getPieceElementId(coords)); if (starvedElement) starvedElement.remove(); if (gameState.board[coords]) { console.log(`Removing starved piece ${RANK_TO_NAME[gameState.board[coords].rank]} from board state at ${coords}`); } delete gameState.board[coords]; }); return starvedPiecesCoords; }
+              function getPotentialMoveDestinations(fromCoords, piece) { const destinations = new Set(); const { row, col } = getRowCol(fromCoords); const abilities = SPECIAL_ABILITIES[piece.rank] || {}; const orthMoves = [getCoords(row + 1, col), getCoords(row - 1, col), getCoords(row, col + 1), getCoords(row, col - 1)]; orthMoves.forEach(c => { if (c) destinations.add(c); }); if (abilities.jumpV && (col === 1 || col === 2 || col === 4 || col === 5)) { const destUp = getCoords(row - 4, col); const destDown = getCoords(row + 4, col); if (destUp && row >= 3 && row <= 6 ) destinations.add(destUp); if (destDown && row >= 0 && row <= 2) destinations.add(destDown); } if (abilities.jumpH && (row === 3 || row === 4 || row === 5)) { const destLeft = getCoords(row, col - 3); const destRight = getCoords(row, col + 3); if (destLeft && col >= 3) destinations.add(destLeft); if (destRight && col <= 3) destinations.add(destRight); } return [...destinations]; }
 
 
-                // 5. Validate Move Type Allowed (Must be standard orthogonal or valid jump)
-                if (!isOrthogonal && !isJumpValid) {
-                    return { valid: false, reason: "Invalid move distance or type." };
-                }
-
-                // 6. Attack Rules (If moving to an occupied square)
-                if (targetPieceData) { // It's an attack
-                     if (targetPieceData.player === piece.player) { // Should be caught earlier
-                         return { valid: false, reason: "Cannot attack own piece." };
-                     }
-
-                     // Get effective ranks (considering traps)
-                     const attackerRank = pieceRank; // Attacker rank not reduced when initiating attack
-                     let defenderRank = targetPieceData.rank;
-                     const defenderPlayer = targetPieceData.player;
-                     const opponentPlayer = piece.player === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
-
-                     // Check if the defender is in *any* trap square
-                     if (ALL_TRAP_SQUARES.has(toCoords)) {
-                          // Rule clarification needed: Does trap reduce rank only if it's the defender's *own* trap?
-                          // Assuming ANY trap reduces rank of piece standing on it, *unless* that piece is attacking out of it.
-                          // Since the piece at 'toCoords' is being attacked (not attacking out), its rank is 0.
-                          // Let's refine: "Any animal in a trap square...has their rank reduced to 0". Doesn't mention ownership.
-                           // Let's check if it's the *opponent's* designated trap square. Rule: "A player cannot enter his own Den". Implies traps near dens are primarily for opponents. Let's assume trap effect applies if defender is on ANY trap square.
-                           console.log(`Defender ${RANK_TO_NAME[defenderRank]} at ${toCoords} is in a trap square, rank reduced to 0.`);
-                           defenderRank = 0;
-                     }
-
-
-                     // Special Case: Rat attacks Elephant
-                     // Rule: Rat[1] can attack the Elephant[8] from land (not from water).
-                     const isRatAttackElephant = pieceRank === 1 && targetPieceData.rank === 8;
-
-                     if (isRatAttackElephant) {
-                         if (isMovingFromWater) {
-                             return { valid: false, reason: "Rat cannot attack Elephant from water." };
-                         }
-                         // If not from water, Rat *can* attack Elephant, regardless of rank 0 from trap.
-                         return { valid: true }; // Attack is valid
-                     }
-
-                     // Normal Rank Comparison
-                     // An animal can attack equal or lower rank. Rank 0 is lowest.
-                     if (attackerRank < defenderRank) {
-                         return { valid: false, reason: `Cannot attack higher-ranked animal (${attackerRank} vs ${defenderRank}).` };
-                     }
-
-                } else {
-                     // Moving into an empty square. Check if it's a trap.
-                     // If moving into an empty trap, the piece's rank becomes 0 *after* landing.
-                     // This is handled implicitly when that piece is potentially attacked later.
-                }
-
-                // If all checks passed
-                return { valid: true };
-            }
-
-            // Helper for jump validation
-            function checkJumpPathClear(fromRC, toRC, attackerPlayer) {
-                const opponent = attackerPlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
-                const startRow = Math.min(fromRC.row, toRC.row);
-                const endRow = Math.max(fromRC.row, toRC.row);
-                const startCol = Math.min(fromRC.col, toRC.col);
-                const endCol = Math.max(fromRC.col, toRC.col);
-
-                // Vertical Jump (dr=4)
-                if (fromRC.col === toRC.col) {
-                    for (let r = startRow + 1; r < endRow; r++) {
-                        const coords = getCoords(r, fromRC.col);
-                        if (!WATER_SQUARES.has(coords)) return false; // Path must be entirely water
-                        const blockingPiece = getPieceData(coords);
-                        if (blockingPiece && blockingPiece.player === opponent) return false; // Blocked
-                    }
-                }
-                // Horizontal Jump (dc=3)
-                else if (fromRC.row === toRC.row) {
-                    for (let c = startCol + 1; c < endCol; c++) {
-                         const coords = getCoords(fromRC.row, c);
-                        if (!WATER_SQUARES.has(coords)) return false; // Path must be entirely water
-                        const blockingPiece = getPieceData(coords);
-                        if (blockingPiece && blockingPiece.player === opponent) return false; // Blocked
-                    }
-                } else {
-                    return false; // Not a straight line jump path
-                }
-                return true; // Path is clear
-            }
-
-            // --- Hungry/Starve Logic ---
-            function declareHungryAnimals(playerToDeclareFor) {
-                 // Find all pieces of 'playerToDeclareFor' that *could* attack an opponent piece on their next turn
-                 let hungryCount = 0;
-                 const hungryPiecesMap = {}; // Stores { coords: true }
-                 const opponent = playerToDeclareFor === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
-
-                 for (const coords in gameState.board) {
-                     const piece = gameState.board[coords];
-                     if (piece && piece.player === playerToDeclareFor) {
-                         // Check potential attack destinations (orthogonal + jumps)
-                         const destinations = getPotentialMoveDestinations(coords, piece);
-
-                         for (const targetCoords of destinations) {
-                              const targetPiece = gameState.board[targetCoords];
-                              // Check if target has an opponent piece AND the move is a valid ATTACK
-                              if (targetPiece && targetPiece.player === opponent) {
-                                   const validation = isValidMove(coords, targetCoords, piece);
-                                   if (validation.valid) { // It's a valid move targeting an opponent -> valid attack
-                                        hungryPiecesMap[coords] = true;
-                                        hungryCount++;
-                                        console.log(`DECLARE HUNGRY: ${playerToDeclareFor} ${RANK_TO_NAME[piece.rank]} at ${coords} can attack ${targetCoords}`);
-                                        break; // This piece is hungry, no need to check its other potential attacks
-                                   }
-                              }
-                         }
-                     }
-                 }
-                 return { hungryCount, hungryPiecesMap };
-            }
-
-
-             function checkAndApplyStarvation(movedPieceCoords, wasAttack) {
-                 // Check at the *start* of the current player's turn resolution, *before* declaring new hungry animals.
-                 // Applies to pieces of the *current* player that *were* marked hungry from the *previous* turn.
-                 const currentPlayer = gameState.currentPlayer;
-                 const starvedPiecesCoords = [];
-
-                 for (const coords in gameState.board) {
-                      const piece = gameState.board[coords];
-                       // Check only pieces of the current player that were hungry
-                       if (piece && piece.player === currentPlayer && piece.isHungry) {
-                            // Did this specific hungry piece just perform the attack?
-                            const didThisPieceAttack = (coords === movedPieceCoords) && wasAttack;
-
-                            if (!didThisPieceAttack) {
-                                // If the piece was hungry but did NOT make the attack this turn
-                                // (either it didn't move, or it moved without attacking), it starves.
-                                console.log(`STARVE: ${currentPlayer} ${RANK_TO_NAME[piece.rank]} at ${coords} starved (was hungry, did not attack).`);
-                                starvedPiecesCoords.push(coords);
-                            } else {
-                                 console.log(`SAVED: ${currentPlayer} ${RANK_TO_NAME[piece.rank]} at ${coords} attacked, avoided starvation.`);
-                            }
-                       }
-                 }
-
-                 // Remove starved pieces from the board (state and DOM)
-                 starvedPiecesCoords.forEach(coords => {
-                     const starvedElement = document.getElementById(getPieceElementId(coords));
-                     if (starvedElement) starvedElement.remove();
-                      if (gameState.board[coords]) { // Log removal before deleting
-                           console.log(`Removing starved piece ${RANK_TO_NAME[gameState.board[coords].rank]} from board state at ${coords}`);
-                      }
-                     delete gameState.board[coords]; // Remove from game state AFTER iteration
-                 });
-
-                 return starvedPiecesCoords; // Return list for notation
-             }
-
-            // Helper to get all potential move/attack squares for a piece
-            function getPotentialMoveDestinations(fromCoords, piece) {
-                const destinations = new Set();
-                const { row, col } = getRowCol(fromCoords);
-                const abilities = SPECIAL_ABILITIES[piece.rank] || {};
-
-                // Orthogonal moves
-                const orthMoves = [
-                    getCoords(row + 1, col), getCoords(row - 1, col),
-                    getCoords(row, col + 1), getCoords(row, col - 1)
-                ];
-                 orthMoves.forEach(c => { if (c) destinations.add(c); });
-
-                 // Jump moves (add potential landing squares)
-                 // Vertical Jumps (over rows 3,4,5 from cols B,C,E,F)
-                 if (abilities.jumpV && (col === 1 || col === 2 || col === 4 || col === 5)) {
-                     const destUp = getCoords(row - 4, col);
-                     const destDown = getCoords(row + 4, col);
-                      // Basic check: ensure jump stays on board and crosses water area conceptually
-                      if (destUp && row >= 3 && row <= 6 ) destinations.add(destUp); // Jumping upwards over water
-                      if (destDown && row >= 0 && row <= 2) destinations.add(destDown); // Jumping downwards over water
-                 }
-                  // Horizontal Jumps (over cols C,D,E from rows 4,5,6)
-                 if (abilities.jumpH && (row === 3 || row === 4 || row === 5)) {
-                     const destLeft = getCoords(row, col - 3);
-                     const destRight = getCoords(row, col + 3);
-                      // Basic check: ensure jump stays on board and crosses water area conceptually
-                      if (destLeft && col >= 2 && col <= 4) destinations.add(destLeft); // Jumping left over water
-                      if (destRight && col >= 0 && col <= 2) destinations.add(destRight); // Jumping right over water
-                 }
-
-                 // Validity (path clear, land->land etc.) is checked by isValidMove later
-                return [...destinations];
-            }
-
-
-            // --- AI Logic ---
-            function triggerAIMove() {
-                console.log("AI (Yellow) is thinking...");
-                const bestMove = findBestAIMove();
-
-                if (bestMove) {
-                    console.log(`AI chooses: ${bestMove.from} to ${bestMove.to}`);
-                    // Perform the move after a short delay
-                    setTimeout(() => {
-                        performMove(bestMove.from, bestMove.to);
-                         // Re-enable drag/drop ONLY if game is not over
-                         if (!gameState.gameOver) {
-                              enableDragDrop();
-                         }
-                    }, 100); // Short delay for visual separation
-                } else {
-                    console.log("AI has no valid moves! Game might be over?");
-                    // If AI has no moves, the opponent (Orange) should win according to rules (movement required)
-                     if (!gameState.gameOver) { // Check if already over
-                         gameState.winner = PLAYERS.ORANGE;
-                         gameState.gameOver = true;
-                         updateStatus("AI has no valid moves. Orange wins!");
-                         disableDragDrop();
-                         updateUI();
-                     } else {
-                          enableDragDrop(); // Should already be disabled, but ensure state consistency
-                     }
-                }
-            }
-
-            function findBestAIMove() {
-                 const possibleMoves = [];
-                 const player = gameState.currentPlayer; // Should be Yellow
-
-                 // 1. Generate all valid moves for the AI player
-                 for (const fromCoords in gameState.board) {
-                     const piece = gameState.board[fromCoords];
-                     if (piece && piece.player === player) {
-                         const destinations = getPotentialMoveDestinations(fromCoords, piece);
-                         for (const toCoords of destinations) {
-                             const validation = isValidMove(fromCoords, toCoords, piece);
-                             if (validation.valid) {
-                                 possibleMoves.push({
-                                     from: fromCoords,
-                                     to: toCoords,
-                                     pieceRank: piece.rank,
-                                     isHungry: piece.isHungry || false, // Current hunger state
-                                     targetPiece: gameState.board[toCoords] || null
-                                 });
-                             }
-                         }
-                     }
-                 }
-
-                 if (possibleMoves.length === 0) return null; // No moves available
-
-                 // 2. Evaluate Moves (Simple Heuristic)
-                 let bestMove = null;
-                 let bestScore = -Infinity;
-
-                 // Check if AI *must* attack due to hunger
-                 const hungryPieces = possibleMoves.filter(move => move.isHungry);
-                 const mustAttack = hungryPieces.length > 0;
-                 let consideredMoves = possibleMoves;
-
-                  if (mustAttack) {
-                      // Filter further: only consider moves by hungry pieces that ARE attacks
-                      const hungryAttackMoves = hungryPieces.filter(move => move.targetPiece);
-                      if (hungryAttackMoves.length > 0) {
-                           console.log("AI is hungry and can attack, considering only attacks by hungry pieces.");
-                           consideredMoves = hungryAttackMoves;
-                      } else {
-                           // AI is hungry but *cannot* attack. It will starve. Choose best non-attack move.
-                           console.log("AI is hungry but cannot attack. Will choose best move (likely starving).");
-                            // Consider all moves by hungry pieces (which are non-attacks)
-                            consideredMoves = hungryPieces;
-                      }
-                  }
-
-
-                 // Score each considered move
-                 for (const move of consideredMoves) {
-                     let score = 0;
-                     const targetPiece = move.targetPiece; // Piece being attacked, if any
-                     const movingPieceRank = move.pieceRank;
-
-                     // Priority 1: Winning move
-                     if (move.to === DENS.orange) {
-                         score = 1000;
-                     }
-                     // Priority 2: Capturing opponent pieces
-                     else if (targetPiece) {
-                         score = 50 + targetPiece.rank * 5; // Base score + value of captured piece
-                         // Bonus for Rat capturing Elephant
-                         if (movingPieceRank === 1 && targetPiece.rank === 8) score += 100;
-                         // Bonus for capturing a hungry piece? Maybe later.
-                     }
-                     // Priority 3: Moving towards opponent's den
-                     else {
-                         score = 1; // Base score for any move
-                         const targetDenRC = getRowCol(DENS.orange);
-                         const currentRC = getRowCol(move.from);
-                         const destRC = getRowCol(move.to);
-                         if (targetDenRC && currentRC && destRC) { // Ensure coords are valid
-                            const distBefore = Math.abs(currentRC.row - targetDenRC.row) + Math.abs(currentRC.col - targetDenRC.col);
-                            const distAfter = Math.abs(destRC.row - targetDenRC.row) + Math.abs(destRC.col - targetDenRC.col);
-                            if (distAfter < distBefore) score += 5; // Bonus for getting closer
-                         }
-                          // Penalty for moving onto own trap (unless capturing)
-                          if (TRAPS.yellow.has(move.to)) { // Yellow moving onto trap near Orange den
-                               score -= 10;
-                          }
-                     }
-
-                      // Penalty: Avoid starvation if possible (if AI wasn't forced into only starving moves)
-                      if (move.isHungry && !targetPiece && !mustAttack) {
-                          // Penalize moving without attacking IF hungry AND wasn't forced
-                           // This condition should be rare if 'mustAttack' logic is correct
-                          console.warn("AI considering non-attack while hungry (unexpected)", move);
-                          score -= 200;
-                      }
-
-
-                     // Penalty: Avoid repetition if AI is the restricted player
-                     const tempBoard = JSON.parse(JSON.stringify(gameState.board));
-                     tempBoard[move.to] = tempBoard[move.from];
-                     delete tempBoard[move.from];
-                     const nextStateStr = getBoardStateString(tempBoard); // Generate state string for the potential next board
-                     const orangeCount = Object.values(tempBoard).filter(p => p && p.player === PLAYERS.ORANGE).length;
-                     const yellowCount = Object.values(tempBoard).filter(p => p && p.player === PLAYERS.YELLOW).length;
-                     const restrictedPlayer = orangeCount > yellowCount ? PLAYERS.ORANGE : (yellowCount > orangeCount ? PLAYERS.YELLOW : PLAYERS.ORANGE);
-
-                     // If AI is the restricted player and this move repeats state for the 3rd+ time
-                     if ((gameState.boardStateHistory[nextStateStr] || 0) >= 2 && player === restrictedPlayer) {
-                          score = -500; // Heavily penalize causing a loss by repetition
-                          console.log("AI avoiding repetition:", move.from, "->", move.to);
-                     }
-
-
-                     // Add slight randomness to break ties
-                     score += Math.random() * 0.1;
-
-
-                     // Update best move
-                     if (score > bestScore) {
-                         bestScore = score;
-                         bestMove = move;
-                     }
-                 }
-
-                  // If evaluation yields no best move (e.g., all scores are -Infinity due to repetition),
-                  // AND we weren't forced into only considering hungry attacks, pick a random valid move from the original list.
-                  if (!bestMove && !mustAttack && possibleMoves.length > 0) {
-                       console.log("AI evaluation failed to find a good move, picking random valid move.");
-                       bestMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-                  } else if (!bestMove && consideredMoves.length > 0) {
-                       // If forced into hungry moves and evaluation failed (e.g. all lead to repeat loss), pick one randomly
-                        console.log("AI evaluation failed within forced moves, picking random forced move.");
-                        bestMove = consideredMoves[Math.floor(Math.random() * consideredMoves.length)];
-                  }
-
-
-                 return bestMove; // Return the best {from, to} object found
-             }
+            // --- AI Logic (triggerAIMove, findBestAIMove) ---
+            // ... (Keep findBestAIMove exactly the same as your previous version) ...
+             function triggerAIMove() { console.log("AI (Yellow) is thinking..."); const bestMove = findBestAIMove(); if (bestMove) { console.log(`AI chooses: ${bestMove.from} to ${bestMove.to}`); setTimeout(() => { performMove(bestMove.from, bestMove.to); if (!gameState.gameOver) { enableDragDrop(); undoButton.disabled = false; /* Re-enable undo after AI moves */ } }, 100); } else { console.log("AI has no valid moves! Game might be over?"); if (!gameState.gameOver) { gameState.winner = PLAYERS.ORANGE; gameState.gameOver = true; updateStatus("AI has no valid moves. Orange wins!"); disableDragDrop(); updateUI(); updateUndoButtonState(); } else { enableDragDrop(); /* Should be disabled */ } } }
+             function findBestAIMove() { const possibleMoves = []; const player = gameState.currentPlayer; for (const fromCoords in gameState.board) { const piece = gameState.board[fromCoords]; if (piece && piece.player === player) { const destinations = getPotentialMoveDestinations(fromCoords, piece); for (const toCoords of destinations) { const validation = isValidMove(fromCoords, toCoords, piece); if (validation.valid) { possibleMoves.push({ from: fromCoords, to: toCoords, pieceRank: piece.rank, isHungry: piece.isHungry || false, targetPiece: gameState.board[toCoords] || null }); } } } } if (possibleMoves.length === 0) return null; let bestMove = null; let bestScore = -Infinity; const hungryPieces = possibleMoves.filter(move => move.isHungry); const mustAttack = hungryPieces.length > 0; let consideredMoves = possibleMoves; if (mustAttack) { const hungryAttackMoves = hungryPieces.filter(move => move.targetPiece); if (hungryAttackMoves.length > 0) { console.log("AI is hungry and can attack..."); consideredMoves = hungryAttackMoves; } else { console.log("AI is hungry but cannot attack..."); consideredMoves = hungryPieces; } } for (const move of consideredMoves) { let score = 0; const targetPiece = move.targetPiece; const movingPieceRank = move.pieceRank; if (move.to === DENS.orange) { score = 1000; } else if (targetPiece) { score = 50 + targetPiece.rank * 5; if (movingPieceRank === 1 && targetPiece.rank === 8) score += 100; } else { score = 1; const targetDenRC = getRowCol(DENS.orange); const currentRC = getRowCol(move.from); const destRC = getRowCol(move.to); if (targetDenRC && currentRC && destRC) { const distBefore = Math.abs(currentRC.row - targetDenRC.row) + Math.abs(currentRC.col - targetDenRC.col); const distAfter = Math.abs(destRC.row - targetDenRC.row) + Math.abs(destRC.col - targetDenRC.col); if (distAfter < distBefore) score += 5; } if (TRAPS.yellow.has(move.to)) { score -= 10; } } if (move.isHungry && !targetPiece && !mustAttack) { console.warn("AI considering non-attack while hungry (unexpected)", move); score -= 200; } const tempBoard = JSON.parse(JSON.stringify(gameState.board)); tempBoard[move.to] = tempBoard[move.from]; delete tempBoard[move.from]; const nextStateStr = getBoardStateString(tempBoard); const orangeCount = Object.values(tempBoard).filter(p => p && p.player === PLAYERS.ORANGE).length; const yellowCount = Object.values(tempBoard).filter(p => p && p.player === PLAYERS.YELLOW).length; const restrictedPlayer = orangeCount > yellowCount ? PLAYERS.ORANGE : (yellowCount > orangeCount ? PLAYERS.YELLOW : PLAYERS.ORANGE); if ((gameState.boardStateHistory[nextStateStr] || 0) >= 2 && player === restrictedPlayer) { score = -500; console.log("AI avoiding repetition:", move.from, "->", move.to); } score += Math.random() * 0.1; if (score > bestScore) { bestScore = score; bestMove = move; } } if (!bestMove && !mustAttack && possibleMoves.length > 0) { console.log("AI picking random valid move."); bestMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)]; } else if (!bestMove && consideredMoves.length > 0) { console.log("AI picking random forced move."); bestMove = consideredMoves[Math.floor(Math.random() * consideredMoves.length)]; } return bestMove; }
 
 
             // --- UI Update & Logging ---
             function updateUI() {
-                // Update turn indicator
-                if (gameState.gameOver) {
-                    turnIndicator.textContent = `Game Over - ${gameState.winner ? gameState.winner.toUpperCase() : 'UNKNOWN'} Wins!`;
-                    turnIndicator.style.color = 'red';
-                } else {
-                    turnIndicator.textContent = gameState.currentPlayer.toUpperCase();
-                    turnIndicator.style.color = gameState.currentPlayer === PLAYERS.ORANGE ? 'darkorange' : 'goldenrod';
-                }
+                 // Update turn indicator text and class
+                 if (gameState.gameOver) {
+                     turnIndicator.textContent = `Game Over - ${gameState.winner ? gameState.winner.toUpperCase() : 'UNKNOWN'} Wins!`;
+                     turnIndicator.className = 'game-over'; // Use class for styling
+                 } else {
+                     turnIndicator.textContent = gameState.currentPlayer.toUpperCase();
+                     turnIndicator.className = gameState.currentPlayer; // 'orange' or 'yellow' class
+                 }
+                 // Update Undo Button State
+                 updateUndoButtonState();
             }
+            function updateStatus(message) { statusMessage.textContent = message; console.log("Status:", message); }
 
-            function updateStatus(message) {
-                statusMessage.textContent = message;
-                console.log("Status:", message); // Log to console as well
-            }
+             // NEW: Function to add a single log entry visually
+             function addLogEntry(turn, orangeMove, yellowMove) {
+                 const logEntryDiv = document.createElement('div');
+                 logEntryDiv.classList.add('log-entry');
+                 logEntryDiv.dataset.turn = turn;
 
-            function logMove(notation) {
+                 const turnSpan = document.createElement('span');
+                 turnSpan.classList.add('turn-number');
+                 turnSpan.textContent = `${turn}.`;
+                 logEntryDiv.appendChild(turnSpan);
+
+                 const orangeSpan = document.createElement('span');
+                  if (orangeMove) {
+                      orangeSpan.classList.add('log-orange');
+                      orangeSpan.textContent = orangeMove;
+                  } else {
+                       orangeSpan.classList.add('placeholder');
+                       orangeSpan.textContent = '...';
+                  }
+                 logEntryDiv.appendChild(orangeSpan);
+
+                 const yellowSpan = document.createElement('span');
+                  if (yellowMove) {
+                      yellowSpan.classList.add('log-yellow');
+                      yellowSpan.textContent = yellowMove;
+                  } else {
+                       // Don't add placeholder if yellow hasn't moved yet in this turn
+                  }
+                  // Only add yellow span if it has content
+                  if (yellowMove) {
+                      logEntryDiv.appendChild(yellowSpan);
+                  }
+
+
+                 moveLogElement.appendChild(logEntryDiv);
+                 moveLogElement.scrollTop = moveLogElement.scrollHeight;
+             }
+
+
+            // REVISED logMove function
+            function logMove(notation, playerWhoMoved) {
                 const turnNum = gameState.turnNumber;
-                const playerWhoMoved = gameState.currentPlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE; // Player who *just* moved
-
                 let currentTurnEntry = gameState.moveHistory.find(entry => entry.turn === turnNum);
+                let existingLogDiv = moveLogElement.querySelector(`[data-turn="${turnNum}"]`);
 
-                if (playerWhoMoved === PLAYERS.ORANGE) {
-                     // Orange moves first in a turn number
-                     if (!currentTurnEntry) {
-                          currentTurnEntry = { turn: turnNum, orange: notation, yellow: null };
-                          gameState.moveHistory.push(currentTurnEntry);
-                          // Add visual log entry
-                          const logEntryDiv = document.createElement('div');
-                          logEntryDiv.textContent = `${turnNum}. ${notation}`;
-                          logEntryDiv.dataset.turn = turnNum;
-                          moveLogElement.appendChild(logEntryDiv);
+                 if (playerWhoMoved === PLAYERS.ORANGE) {
+                      if (!currentTurnEntry) {
+                           currentTurnEntry = { turn: turnNum, orange: notation, yellow: null };
+                           gameState.moveHistory.push(currentTurnEntry);
+                           // Add new visual log entry
+                           addLogEntry(turnNum, notation, null);
+                      } else {
+                           // This case (Orange moving again in same turn) should ideally not happen with correct turn logic
+                           console.warn("Orange moved again in turn", turnNum);
+                           currentTurnEntry.orange = notation; // Overwrite data model
+                           // Update existing visual log entry
+                           if (existingLogDiv) {
+                                const orangeSpan = existingLogDiv.querySelector('.log-orange');
+                                if (orangeSpan) { orangeSpan.textContent = notation; orangeSpan.className = 'log-orange';}
+                                else { /* Handle case where span didn't exist? */}
+                           } else { // Fallback if visual entry missing
+                                addLogEntry(turnNum, notation, currentTurnEntry.yellow);
+                           }
+                      }
+                 } else { // Yellow moved
+                     if (currentTurnEntry) {
+                          currentTurnEntry.yellow = notation; // Update data model
+                          // Update existing visual log entry
+                          if (existingLogDiv) {
+                               let yellowSpan = existingLogDiv.querySelector('.log-yellow');
+                               if (!yellowSpan) { // Create yellow span if it doesn't exist
+                                    yellowSpan = document.createElement('span');
+                                    existingLogDiv.appendChild(yellowSpan);
+                               }
+                               yellowSpan.textContent = notation;
+                               yellowSpan.className = 'log-yellow'; // Ensure correct class
+                          } else { // Fallback if visual entry missing
+                               console.error("Could not find log div for turn", turnNum, "to add Yellow's move.");
+                               // Create a new entry as fallback
+                                addLogEntry(turnNum, currentTurnEntry.orange || '...', notation);
+                          }
                      } else {
-                          // Should not happen normally (Orange moving again in same turn num?)
-                          console.warn("Orange moved again in turn", turnNum);
-                          currentTurnEntry.orange = notation; // Overwrite?
-                          // Update visual log
-                           const logEntryDiv = moveLogElement.querySelector(`[data-turn="${turnNum}"]`);
-                           if (logEntryDiv) logEntryDiv.textContent = `${turnNum}. ${notation} ${currentTurnEntry.yellow || ''}`;
+                          // Should not happen if Orange always moves first in a turn
+                          console.error("Yellow moved but no entry found for turn", turnNum);
+                           // Create new entry as fallback
+                          currentTurnEntry = { turn: turnNum, orange: null, yellow: notation };
+                          gameState.moveHistory.push(currentTurnEntry);
+                          addLogEntry(turnNum, null, notation);
                      }
-                } else { // Yellow moved
-                    if (currentTurnEntry && currentTurnEntry.yellow === null) {
-                        currentTurnEntry.yellow = notation;
-                        // Update visual log entry for this turn
-                        const logEntryDiv = moveLogElement.querySelector(`[data-turn="${turnNum}"]`);
-                        if (logEntryDiv) {
-                             logEntryDiv.textContent = `${turnNum}. ${currentTurnEntry.orange || '...'} ${notation}`;
-                        } else { console.error("Could not find log div for turn", turnNum); }
-                    } else {
-                         // Should not happen (Yellow moving first or again?)
-                         console.warn("Yellow moved unexpectedly in turn", turnNum);
-                         // Maybe start a new line if needed?
-                         const logEntryDiv = document.createElement('div');
-                         logEntryDiv.textContent = `${turnNum}. ... ${notation}`; // Indicate missed Orange move
-                         logEntryDiv.dataset.turn = turnNum;
-                         moveLogElement.appendChild(logEntryDiv);
-                          if (!currentTurnEntry) gameState.moveHistory.push({ turn: turnNum, orange: null, yellow: notation });
-                    }
-                }
+                 }
+             }
 
-                moveLogElement.scrollTop = moveLogElement.scrollHeight; // Auto-scroll
-            }
 
-              function getBoardStateString(board = gameState.board) {
+            // REVISED getBoardStateString function
+             function getBoardStateString(board = gameState.board) {
                  const pieces = [];
-                 // Iterate row by row from top ('9') to bottom ('1')
-                 for (let r = 0; r < ROWS; r++) {
+                 // Iterate row by row from top ('9') down to '1'
+                 for (let r = 0; r < ROWS; r++) { // r=0 is row 9, r=8 is row 1
                      // Iterate column by column from left ('a') to right ('g')
-                     for (let c = 0; c < COLS; c++) {
+                     for (let c = 0; c < COLS; c++) { // c=0 is col a, c=6 is col g
                          const coords = getCoords(r, c);
                          const piece = board[coords];
                          if (piece) {
-                             // Format: Rank + Case-Dependent Coords (Orange=Uppercase, Yellow=Lowercase)
-                              const stateOutput = piece.player === PLAYERS.ORANGE
-                                 ? `${piece.rank}${coords.toUpperCase()}`
-                                 : `${piece.rank}${coords.toLowerCase()}`;
+                             // Format: Rank + Coords (Uppercase for Orange Coords, Lowercase for Yellow Coords)
+                             // Correction: Rule says "lowercase for yellow animals and uppercase for orange animals".
+                             // Example: 7a9, 6g9 ... 8A3, 3C3
+                             // This implies Rank + LowercaseCoords for Yellow, Rank + UppercaseCoords for Orange
+                             const stateOutput = piece.player === PLAYERS.ORANGE
+                                 ? `${piece.rank}${coords.toUpperCase()}` // e.g., 8A3
+                                 : `${piece.rank}${coords.toLowerCase()}`; // e.g., 7a9
                              pieces.push(stateOutput);
                          }
                      }
                  }
-                  // Sort pieces alphabetically for consistency regardless of iteration order
-                  pieces.sort();
+                  // DO NOT SORT pieces array - order matters (row by row)
                  return pieces.join(',');
              }
 
@@ -1259,77 +832,73 @@
              function logBoardState() {
                  const stateString = getBoardStateString();
                  boardStateLogElement.textContent = stateString; // Display current state
-
-                 // Add to history for repetition check
+                 // Add to history for repetition check (using the CORRECT state string)
                  gameState.boardStateHistory[stateString] = (gameState.boardStateHistory[stateString] || 0) + 1;
-                 // console.log("Board States:", gameState.boardStateHistory); // Debug log
+                 console.log(`Board State (${gameState.boardStateHistory[stateString]}x):`, stateString);
                  return stateString;
              }
-
-
-             function updateHungryVisual(coords, isHungry) {
+             function updateHungryVisual(coords, isHungry) { /* ... same as before ... */
                  const pieceElement = document.getElementById(getPieceElementId(coords));
-                 if (pieceElement) {
-                     if (isHungry) {
-                         pieceElement.classList.add('hungry');
-                     } else {
-                         pieceElement.classList.remove('hungry');
-                     }
-                 } else {
-                     // Might happen if called after piece removal (e.g., during starvation cleanup)
-                     // console.log("Could not find element to update hungry visual for:", coords);
+                 if (pieceElement) { if (isHungry) { pieceElement.classList.add('hungry'); } else { pieceElement.classList.remove('hungry'); } }
+             }
+
+            // --- Highlighting Valid Moves (highlightValidMoves, clearHighlights, flashCell) ---
+            // ... (Keep these exactly the same as your previous version) ...
+              function highlightValidMoves(fromCoords) { clearHighlights(); const piece = gameState.board[fromCoords]; if (!piece || piece.player !== gameState.currentPlayer) return; const destinations = getPotentialMoveDestinations(fromCoords, piece); destinations.forEach(toCoords => { const validation = isValidMove(fromCoords, toCoords, piece); if (validation.valid) { const cell = document.getElementById(getCellElementId(toCoords)); if (cell) { cell.classList.add('valid-move-highlight'); if (gameState.board[toCoords]) { cell.classList.add('valid-attack-highlight'); } } } }); }
+              function clearHighlights() { boardElement.querySelectorAll('.cell').forEach(cell => { cell.classList.remove('valid-move', 'valid-attack', 'valid-move-highlight', 'valid-attack-highlight'); cell.style.backgroundColor = ''; cell.style.transition = ''; }); }
+              function flashCell(coords, color = 'red', duration = 500) { const cell = document.getElementById(getCellElementId(coords)); if (cell) { cell.style.transition = `background-color ${duration / 2}ms ease-out`; cell.style.backgroundColor = color === 'red' ? 'rgba(255,0,0,0.5)' : 'rgba(0,255,0,0.5)'; setTimeout(() => { cell.style.backgroundColor = ''; }, duration / 2); } }
+
+
+            // --- Undo Move Functionality ---
+            function undoMove() {
+                if (gameHistory.length === 0 || gameState.currentPlayer === PLAYERS.YELLOW) {
+                     console.log("Cannot undo."); // Cannot undo if history is empty or if it's AI's turn / during AI move
+                     return;
                  }
-             }
 
+                console.log("Undoing move...");
 
-             // --- Highlighting Valid Moves ---
-             function highlightValidMoves(fromCoords) {
-                 clearHighlights(); // Clear previous highlights first
-                 const piece = gameState.board[fromCoords];
-                 if (!piece || piece.player !== gameState.currentPlayer) return;
+                 // Pop the last saved state (state *before* the move we want to undo)
+                 const prevState = gameHistory.pop();
 
-                 const destinations = getPotentialMoveDestinations(fromCoords, piece);
-
-                 destinations.forEach(toCoords => {
-                     const validation = isValidMove(fromCoords, toCoords, piece);
-                     if (validation.valid) {
-                          const cell = document.getElementById(getCellElementId(toCoords));
-                          if (cell) {
-                               cell.classList.add('valid-move-highlight'); // Marker class
-                               if (gameState.board[toCoords]) { // Is it an attack?
-                                   cell.classList.add('valid-attack-highlight');
-                               }
-                          }
-                     }
-                 });
-                 // Apply visual styles based on marker classes (done by dragEnter/Leave)
-             }
-
-             function clearHighlights() {
-                 boardElement.querySelectorAll('.cell').forEach(cell => {
-                     // Remove visual classes and marker classes
-                     cell.classList.remove('valid-move', 'valid-attack', 'valid-move-highlight', 'valid-attack-highlight');
-                     // Reset any inline styles potentially added by flashCell
-                      cell.style.backgroundColor = '';
-                      cell.style.transition = ''; // Reset transition if added
-                 });
-             }
-
-              function flashCell(coords, color = 'red', duration = 500) {
-                 const cell = document.getElementById(getCellElementId(coords));
-                 if (cell) {
-                      const originalBg = cell.style.backgroundColor; // Store original? Might be complex with overlays.
-                      cell.style.transition = `background-color ${duration / 2}ms ease-out`;
-                      cell.style.backgroundColor = color === 'red' ? 'rgba(255,0,0,0.5)' : 'rgba(0,255,0,0.5)';
-                      setTimeout(() => {
-                          cell.style.backgroundColor = ''; // Revert (will inherit from CSS or be transparent)
-                      }, duration / 2);
+                 if (!prevState) {
+                      console.error("Undo failed: No previous state found in history.");
+                      updateUndoButtonState(); // Make sure button state is correct
+                      return;
                  }
-             }
+
+                 // If the AI (Yellow) just moved, we need to undo two steps (AI move + Player move)
+                 // Check the player *in the state we are restoring*
+                 // let statesToUndo = 1;
+                 // if (prevState.currentPlayer === PLAYERS.YELLOW && gameHistory.length > 0) {
+                 //      // The state we are restoring is Yellow's turn, meaning Orange just moved.
+                 //      // If we want to undo Orange's move, we might need to pop again?
+                 //      // Let's simplify: Always undo the last *completed* action recorded in history.
+                 //       console.log("Undoing AI move as well...");
+                 //       const humanMovePrevState = gameHistory.pop();
+                 //       if (humanMovePrevState) {
+                 //            loadGameState(humanMovePrevState);
+                 //       } else {
+                 //            console.warn("Could not undo human move prior to AI move.");
+                 //            loadGameState(prevState); // Load the state before AI move anyway
+                 //       }
+                 // } else {
+                     // Only undo one move (human just moved, or AI didn't move last)
+                     loadGameState(prevState);
+                 // }
+
+                 console.log("Game state restored to turn:", gameState.turnNumber, "Player:", gameState.currentPlayer);
+            }
+
+            function updateUndoButtonState() {
+                // Disable if history is empty OR if it's AI's turn and thinking/acting OR game is over
+                 undoButton.disabled = (gameHistory.length === 0 || gameState.gameOver || (gameState.currentPlayer === PLAYERS.YELLOW && boardElement.style.pointerEvents === 'none') );
+            }
 
 
-            // --- Reset Game ---
+            // --- Event Listeners ---
             resetButton.addEventListener('click', initializeGame);
+            undoButton.addEventListener('click', undoMove); // Add listener for Undo button
 
             // --- Initial Game Setup ---
             initializeGame();
