@@ -292,6 +292,30 @@
             animation: capture-animation 0.4s ease-out forwards;
         }
 
+        /* --- Trap Rank Indicator Styling --- */
+        .trap-rank-indicator {
+            position: absolute;
+            top: -2px; /* Position slightly above the piece image */
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 0.75em; /* Smaller font size */
+            font-weight: bold;
+            color: white; /* White text */
+            background-color: rgba(200, 0, 0, 0.75); /* Reddish semi-transparent background */
+            border-radius: 3px;
+            padding: 0 2px;
+            z-index: 1; /* Above the image (z-index 0 default) but below selection/hungry (z-index > 1) */
+            pointer-events: none; /* So it doesn't interfere with clicks/drags */
+            display: none; /* Hidden by default */
+            box-sizing: border-box;
+            user-select: none; /* Prevent text selection */
+        }
+
+        .trap-rank-indicator.visible {
+            display: block; /* Show the indicator when this class is added */
+        }
+
         @keyframes capture-animation {
             0% {
                 transform: scale(1);
@@ -319,14 +343,25 @@
 
         .selected {
             /* Outline for the currently selected piece */
-            outline: 3px solid var(--piece-select-glow);
+            outline: 3px solid var(--piece-select-glow); /* Blue solid */
             outline-offset: 1px;
+            z-index: 16; /* Ensure selected outline is visually prominent */
         }
 
         .hungry {
-            /* Outline for pieces that must attack if possible */
-            outline: 3px dashed var(--hungry-outline);
-            outline-offset: 2px;
+            /* Box-shadow glow for pieces that must attack if possible */
+            /* outline: 3px dashed var(--hungry-outline); */ /* Keep old style commented */
+            /* outline-offset: 2px; */
+            box-shadow: 0 0 0 3px var(--hungry-outline); /* Red 'glow' effect */
+             /* Optional: Add a subtle animation */
+            /* animation: hungry-pulse 1.5s infinite ease-in-out; */
+        }
+
+        /* Optional pulse animation for hungry pieces */
+        @keyframes hungry-pulse {
+            0% { box-shadow: 0 0 0 3px var(--hungry-outline); }
+            50% { box-shadow: 0 0 0 5px rgba(255, 0, 0, 0.5); } /* Slightly wider, semi-transparent */
+            100% { box-shadow: 0 0 0 3px var(--hungry-outline); }
         }
 
         /* --- UI Info Panel Styling --- */
@@ -604,6 +639,116 @@
             display: none;
         }
 
+        /* --- Rules Accordion Styling --- */
+        #rules-accordion-container {
+            width: 100%;
+            max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px); /* Match main content width */
+            margin: 15px auto 15px auto; /* Add some space around it */
+            border: 1px solid var(--medium-gray);
+            border-radius: 5px;
+            overflow: hidden; /* Clip content during transition */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            box-sizing: border-box;
+            background-color: #f8f9fa; /* Light background */
+        }
+
+        .rules-toggle-button {
+            background-color: #e9ecef; /* Slightly darker header background */
+            color: var(--dark-gray);
+            cursor: pointer;
+            padding: 12px 18px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 1.1em;
+            transition: background-color 0.3s ease;
+            display: flex;
+            justify-content: space-between; /* Space between text and icon */
+            align-items: center;
+            font-weight: 500;
+        }
+
+        .rules-toggle-button:hover,
+        .rules-toggle-button.active {
+            background-color: #dee2e6; /* Darker on hover/active */
+        }
+
+        .rules-toggle-button:focus-visible {
+             box-shadow: 0 0 0 3px var(--focus-outline);
+             z-index: 1; /* Ensure focus outline is visible */
+             position: relative; /* Needed for z-index */
+        }
+
+        .rules-icon {
+            font-size: 1.2em;
+            font-weight: bold;
+            transition: transform 0.3s ease;
+        }
+
+        .rules-toggle-button.active .rules-icon {
+            transform: rotate(45deg); /* Rotate '+' to 'x' */
+        }
+
+        .rules-content {
+            padding: 0 18px; /* Add padding only when open */
+            background-color: white;
+            max-height: 0; /* Initially collapsed */
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out; /* Smooth transition */
+            border-top: 1px solid var(--medium-gray); /* Separator line */
+        }
+
+        .rules-content.expanded {
+             padding: 15px 18px; /* Padding when expanded */
+             /* max-height is set by JS */
+        }
+
+
+        .rules-content h3 {
+            margin-top: 15px;
+            margin-bottom: 8px;
+            color: var(--dark-orange);
+            border-bottom: 1px solid var(--medium-gray);
+            padding-bottom: 4px;
+        }
+         .rules-content h3:first-child {
+            margin-top: 0;
+         }
+
+        .rules-content h4 {
+            margin-top: 12px;
+            margin-bottom: 5px;
+            color: var(--dark-gray);
+        }
+
+
+        .rules-content p,
+        .rules-content ul,
+        .rules-content ol {
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        .rules-content ul,
+        .rules-content ol {
+            padding-left: 25px; /* Indent lists */
+        }
+         .rules-content ul ul,
+         .rules-content ol ol,
+         .rules-content ul ol,
+         .rules-content ol ul {
+             margin-bottom: 5px; /* Less space for nested lists */
+         }
+
+        .rules-content li {
+            margin-bottom: 5px;
+        }
+
+        .rules-content strong {
+            font-weight: 600; /* Make bold text stand out */
+        }
+
         /* --- Mobile Responsiveness --- */
         @media (max-width: 850px) {
 
@@ -707,12 +852,121 @@
                 <!-- Board state string for debugging/repetition check -->
             </div>
 
+            <!-- Load From State Section -->
+            <div style="margin-top: 15px; border-top: 1px solid var(--medium-gray); padding-top: 10px;">
+                <label for="board-state-input" style="display: block; margin-bottom: 5px; font-weight: bold;">Load From State String:</label>
+                <input type="text" id="board-state-input" placeholder="Paste state string (e.g., 8G7,7A9,...)" style="width: calc(100% - 12px); padding: 6px; margin-bottom: 8px; border: 1px solid var(--medium-gray); border-radius: 3px;">
+                <button id="load-state-button" class="game-button" style="background-color: #28a745;">Load State</button> <!-- Green button -->
+                <p id="load-status-message" style="font-size: 0.85em; color: #6c757d; min-height: 1.2em; margin-top: 5px;"></p>
+            </div>
+            <!-- End Load From State Section -->
+
             <div class="button-container">
                 <button id="undo-button" class="game-button" disabled>Undo Turn</button>
                 <button id="reset-button" class="game-button">Reset Game</button>
             </div>
         </section>
     </main>
+
+    <!-- Rules Accordion Section -->
+    <section id="rules-accordion-container" aria-labelledby="rules-heading">
+        <button id="rules-toggle-button" class="rules-toggle-button" aria-expanded="false" aria-controls="rules-content">
+            <span class="rules-button-text">Show Game Rules</span>
+            <span class="rules-icon" aria-hidden="true">+</span>
+        </button>
+        <div id="rules-content" class="rules-content" role="region" aria-hidden="true">
+            <h2 id="rules-heading" class="visually-hidden">Game Rules</h2>
+
+            <h3>Objective</h3>
+            <p>Be the first player to move any of your animals into the opponent's <strong>Den</strong> square.</p>
+            <ul>
+                <li>Orange's Den: <strong>d1</strong></li>
+                <li>Yellow's Den: <strong>d9</strong></li>
+            </ul>
+
+            <h3>Gameplay</h3>
+            <ul>
+                <li>Orange starts the game.</li>
+                <li>Players take turns moving one animal per turn.</li>
+                <li>Animals move one square horizontally or vertically (never diagonally).</li>
+                <li>You cannot move onto a square occupied by your own animal.</li>
+            </ul>
+
+            <h4>Attacking</h4>
+            <ul>
+                <li>You can move onto a square occupied by an opponent's animal if your animal's rank is <strong>equal to or higher than</strong> the opponent's rank.</li>
+                <li>This is an attack, and the opponent's captured animal is removed from the board.</li>
+                <li><strong>Exception:</strong> See Special Powers for Rat vs. Elephant.</li>
+            </ul>
+
+            <h4>End of Turn Sequence</h4>
+            <p>After making your move, the following checks happen automatically:</p>
+            <ol>
+                <li><strong>Declare Hungry:</strong> Any of the <em>opponent's</em> animals that can now make a valid attack on <em>your</em> next turn are marked as <strong>hungry</strong> (red glow).</li>
+                <li><strong>Check Starvation:</strong> If any of <em>your own</em> animals were marked as hungry at the <em>start</em> of your turn, but you did not make an attacking move with any of them, those hungry animals starve and are removed from the board.</li>
+            </ol>
+
+            <h4>Special Squares</h4>
+            <ul>
+                <li><strong>Den:</strong> Your own Den (Orange: d1, Yellow: d9) cannot be entered by your pieces. Reaching the opponent's Den wins the game. A <strong>hungry</strong> animal cannot enter the opponent's Den.</li>
+                <li><strong>Water (b4-c6, e4-f6):</strong> Only specific animals can enter or move on water (see Special Powers).</li>
+                <li><strong>Traps:</strong>
+                    <ul>
+                        <li>Orange Traps (affect Yellow): <strong>c1, d2, e1</strong></li>
+                        <li>Yellow Traps (affect Orange): <strong>c9, d8, e9</strong></li>
+                    </ul>
+                    Any animal landing on an opponent's Trap square has its rank effectively reduced to <strong>0</strong> for the purpose of being attacked while on that square. A "(0)" marker appears above trapped animals. However, an animal attacking <em>from</em> a trap square uses its normal rank.
+                 </li>
+            </ul>
+
+            <h4>Other Rules</h4>
+            <ul>
+                <li>You must make a move each turn (passing is not allowed).</li>
+                <li>The game cannot end in a draw.</li>
+            </ul>
+
+            <h3>Special Powers</h3>
+            <ul>
+                <li><strong>Rat [1]:</strong>
+                    <ul>
+                        <li>Can enter and move on <strong>Water</strong> squares.</li>
+                        <li>Can attack the <strong>Elephant [8]</strong>, but only when attacking from a land square (cannot attack Elephant from Water).</li>
+                    </ul>
+                 </li>
+                 <li><strong>Dog [3]:</strong>
+                    <ul>
+                         <li>Can enter and move on <strong>Water</strong> squares.</li>
+                    </ul>
+                 </li>
+                 <li><strong>Lion [7] and Tiger [6]:</strong>
+                    <ul>
+                        <li>Can <strong>jump</strong> horizontally or vertically over <strong>Water</strong> squares.</li>
+                        <li>A jump moves from a land square directly across 2 or 3 water squares to another land square.</li>
+                        <li>Jumps can be used to move or attack.</li>
+                        <li>A jump is blocked if an opponent's swimming animal (Rat or Dog) occupies any water square along the jump path.</li>
+                    </ul>
+                </li>
+                 <li><strong>Leopard [5]:</strong>
+                    <ul>
+                        <li>Can <strong>jump horizontally</strong> over <strong>Water</strong> squares (across 2 water squares).</li>
+                        <li>Cannot jump vertically.</li>
+                        <li>Jumps follow the same blocking rules as Lion/Tiger.</li>
+                    </ul>
+                </li>
+                <li><strong>Elephant [8]:</strong> Can attack the Rat [1].</li>
+            </ul>
+
+            <h3>Repetition Limit</h3>
+            <p>To prevent endless loops and ensure a winner, a repetition rule exists:</p>
+            <ul>
+                <li>Determine which player currently has more animals on the board. If tied, the starting player (Orange) is considered the "leading player".</li>
+                <li>The leading player is <strong>not allowed</strong> to make a move that results in a board position that has already occurred <strong>3 times</strong> previously during the game (with them to move).</li>
+                <li>If the leading player makes such a move, they lose, and the opponent wins.</li>
+            </ul>
+            <p><em>(Board positions are tracked automatically.)</em></p>
+
+        </div><!-- /#rules-content -->
+    </section><!-- /#rules-accordion-container -->
 
     <!-- Debug Log Section (conditionally displayed) -->
     <section id="debug-log-container" aria-labelledby="debug-log-heading">
@@ -1098,6 +1352,26 @@
                 return allAdjacent;
             }
 
+            /**
+             * Checks if a piece at given coordinates is on an opponent's trap square.
+             * @param {object} pieceData - The piece data object ({ player, rank, ... }).
+             * @param {string} coords - The algebraic coordinates to check.
+             * @returns {boolean} True if the piece is on an opponent's trap, false otherwise.
+             */
+            function isPieceTrapped(pieceData, coords) {
+                if (!pieceData || !coords) return false;
+                // Orange piece is trapped if on a TRAPS.yellow square
+                if (pieceData.player === PLAYERS.ORANGE && TRAPS.yellow.has(coords)) {
+                    return true;
+                }
+                // Yellow piece is trapped if on a TRAPS.orange square
+                if (pieceData.player === PLAYERS.YELLOW && TRAPS.orange.has(coords)) {
+                    return true;
+                }
+                // Otherwise, not trapped
+                return false;
+            }
+
 
             // --- Board Creation and Setup ---
 
@@ -1186,6 +1460,11 @@
                 pieceElement.addEventListener('dragover', handleDragOver);
                 pieceElement.addEventListener('dragenter', handleDragEnterPiece);
                 pieceElement.addEventListener('dragleave', handleDragLeavePiece);
+                // Add the trap indicator span (initially hidden)
+                const indicatorSpan = document.createElement('span');
+                indicatorSpan.classList.add('trap-rank-indicator'); // Base class for styling
+                indicatorSpan.textContent = '(0)'; // The text content
+                pieceElement.appendChild(indicatorSpan); // Append it inside the piece div
 
                 return pieceElement;
             }
@@ -1216,6 +1495,9 @@
                         updateHungryVisual(coords, pieceData.isHungry || false);
                         // Set initial accessibility (draggable/focusable)
                         updatePieceAccessibility(pieceElement);
+                        // Check and apply trap indicator visual
+                        const isTrapped = isPieceTrapped(pieceData, coords);
+                        updateTrapIndicatorVisual(coords, isTrapped);
                     }
                 }
             }
@@ -1402,26 +1684,25 @@
                     return;
                 }
 
-                let statesToUndo = 0;
                 if (gameHistory.length === 0) {
                     console.log("Nothing to undo.");
                     return;
                 }
 
-                // Determine how many states to pop from history
-                // If the *last saved state* was Yellow's turn (meaning Yellow just moved), undo 2 states (Yellow's move + Orange's previous move)
-                // Otherwise (Orange just moved), undo 1 state.
-                const lastState = gameHistory[gameHistory.length - 1];
-                statesToUndo = (lastState.currentPlayer === PLAYERS.YELLOW) ? 2 : 1; // Check whose turn it WAS before the last move(s)
+                // --- Determine how many states to undo (Always 1 for this new logic) ---
+                const statesToUndo = 1;
+                // --- End determination ---
 
-                // Ensure we don't try to undo more states than exist
+
+                // Ensure we don't try to undo more states than exist (this check is slightly redundant now but safe)
                 if (gameHistory.length < statesToUndo) {
-                    console.log(`Cannot undo ${statesToUndo} states, only ${gameHistory.length} available.`);
-                    statesToUndo = gameHistory.length; // Undo all available history if needed
+                    console.log(`Cannot undo ${statesToUndo} state, only ${gameHistory.length} available.`);
+                    // This should ideally not be reached if the initial length check passed.
+                    return; // Exit if somehow history became empty unexpectedly
                 }
 
-                console.log(`Undoing last ${statesToUndo} state(s)...`);
-                // Pop the required number of states from the history
+                console.log(`Undoing last ${statesToUndo} state...`); // Log message updated
+                // Pop the required number of states (always 1) from the history
                 for (let i = 0; i < statesToUndo; i++) {
                     gameHistory.pop();
                 }
@@ -1454,42 +1735,52 @@
 
             /**
              * Sets up the initial game state, creates the board, places pieces, and updates the UI.
-             * Called when the page loads or the Reset button is clicked.
+             * Accepts an optional custom board state object to load from.
+             * Called when the page loads, the Reset button is clicked, or Load State is used.
+             * @param {object|null} [customBoard=null] - A board object ({ coords: pieceData }) to load instead of INITIAL_SETUP.
              */
-            function initializeGame() {
-                console.log("Initializing game...");
+            function initializeGame(customBoard = null) { // <-- Added parameter with default null
+                console.log("Initializing game..." + (customBoard ? " with custom state." : ""));
 
                 // Reset core game state variables
                 gameState = {
-                    board: JSON.parse(JSON.stringify(INITIAL_SETUP)), // Deep copy initial setup
-                    currentPlayer: PLAYERS.ORANGE, // Orange always starts
-                    turnNumber: 1,
-                    moveHistory: [], // Clear move log history
-                    boardStateHistory: {}, // Clear board state repetition counts
+                    // Use customBoard if provided and valid, otherwise use INITIAL_SETUP
+                    board: customBoard ? customBoard : JSON.parse(JSON.stringify(INITIAL_SETUP)), // <-- Modified this line
+                    currentPlayer: PLAYERS.ORANGE, // Always start with Orange after reset/load
+                    turnNumber: 1,             // Always reset turn number
+                    moveHistory: [],           // Clear move log history
+                    boardStateHistory: {},     // Clear board state repetition counts
                     gameOver: false,
                     winner: null
                 };
                 gameHistory = []; // Clear undo history
                 aiLastMove = { from: null, to: null }; // Clear AI move highlight
 
-                // Add special abilities and initial 'hungry' status to pieces in the board state
-                Object.keys(gameState.board).forEach(coords => {
-                    const piece = gameState.board[coords];
-                    if (!piece) return;
-                    piece.isHungry = false; // No pieces start hungry
-                    const abilities = SPECIAL_ABILITIES[piece.rank];
-                    // Assign abilities from the constant, defaulting to false if not defined
-                    if (abilities) {
-                        piece.swims = abilities.swims || false;
-                        piece.attacksElephant = abilities.attacksElephant || false;
-                        piece.jumpH = abilities.jumpH || false;
-                        piece.jumpV = abilities.jumpV || false;
-                    } else {
-                        // Ensure properties exist even if rank isn't in SPECIAL_ABILITIES (safety)
-                        piece.swims = false; piece.attacksElephant = false;
-                        piece.jumpH = false; piece.jumpV = false;
-                    }
-                });
+                // Add special abilities and initial 'hungry' status if NOT using custom board
+                // If using customBoard, parseBoardStateString should have already added abilities.
+                if (!customBoard) {
+                    Object.keys(gameState.board).forEach(coords => {
+                        const piece = gameState.board[coords];
+                        if (!piece) return;
+                        piece.isHungry = false; // No pieces start hungry
+                        const abilities = SPECIAL_ABILITIES[piece.rank];
+                        if (abilities) {
+                            piece.swims = abilities.swims || false;
+                            piece.attacksElephant = abilities.attacksElephant || false;
+                            piece.jumpH = abilities.jumpH || false;
+                            piece.jumpV = abilities.jumpV || false;
+                        } else {
+                            piece.swims = false; piece.attacksElephant = false;
+                            piece.jumpH = false; piece.jumpV = false;
+                        }
+                    });
+                } else {
+                     // If loading custom board, ensure all pieces have isHungry set to false initially.
+                     // parseBoardStateString already does this, but double-check for safety.
+                     Object.values(gameState.board).forEach(piece => {
+                         if(piece) piece.isHungry = false;
+                     });
+                }
 
                 // Set up the visual board
                 createBoard(); // Create cell elements
@@ -1498,10 +1789,10 @@
                 // Reset UI elements
                 moveLogElement.innerHTML = ''; // Clear visual move log
                 boardStateLogElement.textContent = ''; // Clear board state display
-                updateStatus("Game Started. Orange to move."); // Initial status message
+                updateStatus("Game Ready. Orange to move."); // Initial status message
                 updateUI(); // Set turn indicator, etc.
                 clearHighlights(); // Remove any residual highlights
-                logBoardState(); // Log the initial board state
+                logBoardState(); // Log the initial/loaded board state
                 enablePlayerInteraction(); // Allow Orange player to move
                 updateUndoButtonState(); // Disable undo button initially
                 selectedPieceCoords = null; // Ensure no piece is selected
@@ -1924,12 +2215,25 @@
                 const coords = pieceElement.dataset.coords;
                 const pieceData = getPieceData(coords);
 
-                // Ignore clicks on opponent's pieces
+                // Handle clicks on opponent's pieces OR empty space where piece was (edge case)
                 if (!pieceData || pieceData.player !== gameState.currentPlayer) {
-                    clearHighlights();
-                    deselectPiece();
+                    // --- MODIFIED ---
+                    // If a friendly piece IS selected, clicking an opponent piece might be
+                    // an attempt to capture. Let the handleCellClick deal with it.
+                    // Only clear selection/highlights if NO friendly piece is currently selected.
+                    if (!selectedPieceCoords) {
+                        clearHighlights();
+                        // deselectPiece() implicitly called by clearHighlights if needed,
+                        // but calling it explicitly when selectedPieceCoords is null is safe.
+                        deselectPiece();
+                    }
+                    // If selectedPieceCoords IS set, do nothing here. The event will bubble
+                    // to the cell, and handleCellClick will check if it's a valid move/capture.
                     return;
+                    // --- END MODIFICATION ---
                 }
+
+                // --- If clicking on a friendly piece ---
 
                 // If clicking the already selected piece, deselect it
                 if (selectedPieceCoords === coords) {
@@ -2287,11 +2591,33 @@
                     positionElementOnBoard(pieceElement, toCoords);
                     // Update its accessibility (it might become non-interactive if turn changes)
                     updatePieceAccessibility(pieceElement); // Important AFTER position update
-                } else {
-                    // Fallback if element somehow missing - redraw all pieces
-                    console.error(`!!! Piece element not found at ${fromCoords}! Could not update DOM element. Re-placing all pieces.`);
-                    placePieces(); // Less efficient, but ensures consistency
-                }
+
+                    // --- IMMEDIATELY Update Attacker's Hungry Status After Capture ---
+                    if (isAttack) {
+                        // Update the game state for the piece that just attacked
+                        // 'piece' variable still holds the reference to the moved piece data
+                        piece.isHungry = false; // The piece is no longer hungry after capturing
+                        // Update the visual marker immediately at its new location
+                        updateHungryVisual(toCoords, false);
+                        console.log(`Attacker ${RANK_TO_NAME[piece.rank]}@${toCoords} is no longer hungry after capture.`);
+                    }
+                    // --- End Immediate Update ---
+                    // --- Update Trap Indicator for Moved Piece ---
+                    // Check the piece's status at its NEW location
+                    const movedPieceData = gameState.board[toCoords]; // Get data from the destination
+                    if (movedPieceData) { // Check piece still exists (wasn't captured/starved in the interim)
+                        const isNowTrapped = isPieceTrapped(movedPieceData, toCoords);
+                        updateTrapIndicatorVisual(toCoords, isNowTrapped);
+                    }
+                    // Note: If a piece moved *off* a trap, the indicator is removed here.
+                    // If a piece was captured *on* a trap, its element is removed, so no update needed.
+                    // --- End Trap Indicator Update ---
+
+                    } else {
+                        // Fallback if element somehow missing - redraw all pieces
+                        console.error(`!!! Piece element not found at ${fromCoords}! Could not update DOM element. Re-placing all pieces.`);
+                        placePieces(); // Less efficient, but ensures consistency
+                    }
 
                 // Complete move notation (e.g., "8xg7")
                 notation += toCoords;
@@ -2347,15 +2673,34 @@
                     notation += '+'.repeat(hungryCount); // e.g., "8xg7++" if 2 animals became hungry
                 }
 
-                // Add 's' to notation for each piece that starved this turn
-                if (starvedPiecesCoords.length > 0) {
-                    notation += 's'.repeat(starvedPiecesCoords.length); // e.g., "5c4s"
-                    // Add starvation info to the status message
+                let starvationOccurred = starvedPiecesCoords.length > 0;
+
+                // Add starvation info to the status message BEFORE modifying notation for 's' rule
+                if (starvationOccurred) {
                     statusAction += ` (${starvedPiecesCoords.length} animal${starvedPiecesCoords.length > 1 ? 's' : ''} starved)`;
                 }
 
+                // Tentatively add 's' if starvation occurred (to check if it happened)
+                // We will correct this right after according to the Clesto rule.
+                if (starvationOccurred) {
+                    notation += 's'; // Add a single 's' marker temporarily if *any* starvation happened
+                }
+
+                // --- Apply Clesto Notation Rule: ending 's' becomes 'x' ---
+                if (notation.endsWith('s')) { // Check if starvation marker was added
+                    // Remove the trailing 's'
+                    notation = notation.slice(0, -1);
+                    // Ensure the notation ends with 'x' if it doesn't already (e.g., from a normal capture)
+                    if (!notation.endsWith('x')) {
+                        notation += 'x';
+                    }
+                    console.log(`Applying Clesto rule: Starvation occurred, notation corrected to end with 'x': ${notation}`);
+                }
+                // --- End Clesto Notation Rule ---
+
+
                 // --- Log the Move & Board State ---
-                logMove(notation, playerWhoMoved); // Add move to visual log and history
+                logMove(notation, playerWhoMoved); // Add move to visual log and history using the CORRECTED notation
                 const boardStateString = logBoardState(); // Log state for repetition check
 
                 // --- Check Draw Conditions ---
@@ -2413,8 +2758,9 @@
                 if (gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
                     disablePlayerInteraction(); // Prevent player moves during AI thinking
                     undoButton.disabled = true; // Prevent undo during AI thinking
-                    // Wait briefly before starting AI calculation (allows animations to catch up)
-                    setTimeout(triggerAIMove, 500); // 500ms delay
+                    // Add a delay before starting AI calculation
+                    console.log("AI Turn: Waiting 2 seconds before thinking..."); // Optional: log the delay start
+                    setTimeout(triggerAIMove, 2000); // 2000ms (2 second) delay
                 } else if (!gameState.gameOver) {
                     // If it's Orange's turn, ensure interaction is enabled
                     enablePlayerInteraction();
@@ -2481,6 +2827,14 @@
                     return { valid: false, reason: "Cannot enter your own den." };
                 }
 
+                // --- Rule: Hungry animal cannot enter opponent's den ---
+                if (piece.isHungry) { // Check only if the piece is currently hungry
+                    const opponentDen = piece.player === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+                    if (toCoords === opponentDen) {
+                        return { valid: false, reason: "Hungry animal cannot enter the den to win." };
+                    }
+                }
+
                 // --- Movement Type and Distance Calculation ---
                 const dr = Math.abs(fromRC.row - toRC.row);
                 const dc = Math.abs(fromRC.col - toRC.col);
@@ -2493,21 +2847,30 @@
                 if (isMovingToWater && !pieceAbilities.swims) {
                     return { valid: false, reason: "This animal cannot enter water." };
                 }
+                 // Check rules for moves starting AND ending in water
                  if (isMovingFromWater && isMovingToWater) {
-                     if (targetPieceData && pieceAbilities.swims) {
-                        // Allow Rat/Dog attack within water
-                     } else if (targetPieceData && !pieceAbilities.swims) {
-                         return { valid: false, reason: "Cannot attack into water (unless Rat/Dog)." };
-                     } else if (!targetPieceData) {
-                         return { valid: false, reason: "Cannot move between water squares." };
+                     // Check if attacking within water
+                     if (targetPieceData) { // Is there a piece at the destination?
+                        if (pieceAbilities.swims) {
+                            // Swimmers (Rat/Dog) can attack other pieces within water
+                            // (Capture validity based on rank etc. is checked later)
+                        } else {
+                            // Non-swimmers cannot attack into/within water
+                            return { valid: false, reason: "Cannot attack into water (unless Rat/Dog)." };
+                        }
                      }
+                     // Implicitly allow movement between empty water squares for swimmers here
+                     // because the blocking 'else if (!targetPieceData)' was removed.
                  }
+                // Rule: Rat cannot attack Elephant if Rat is in the water
                 if (pieceRank === 1 && targetPieceData?.rank === 8 && isMovingFromWater) {
                      return { valid: false, reason: "Rat cannot attack Elephant from water."};
                 }
-                if (isMovingFromWater && targetPieceData && !isMovingToWater) {
+                // Rule: Cannot attack land from water
+                if (isMovingFromWater && !isMovingToWater && targetPieceData) { // Added targetPieceData check - only relevant for attacks
                      return { valid: false, reason: "Cannot attack land from water." };
                 }
+                // Note: Exiting water to empty land is handled implicitly later by checking orthogonal/jump validity
 
 
                 // --- Jump Movement Rules ---
@@ -2568,10 +2931,8 @@
                         return { valid: true }; // Special case: Valid capture
                     }
 
-                    // Rule: Elephant (8) cannot capture Rat (1)
-                    if (pieceRank === 8 && targetPieceData.rank === 1) {
-                        return { valid: false, reason: "Elephant cannot attack Rat." };
-                    }
+                    // REMOVED: Rule preventing Elephant (8) from capturing Rat (1)
+                    // The general capture rule below will now handle this.
 
                     // General Rule: Higher or equal rank captures lower rank (unless Rat vs Elephant or trap involved)
                     // Compare attacker rank against the potentially modified defenderRank
@@ -3135,7 +3496,7 @@
              */
             function evaluateBoard(boardState, playerForMax) {
                 let score = 0;
-                const pieceValues = { 1: 10, 2: 20, 3: 30, 4: 40, 5: 50, 6: 70, 7: 80, 8: 100 }; // Rat:10, Cat:20, Dog:30, Wolf:40, Leopard:50, Tiger:70, Lion:80, Elephant:100
+                const pieceValues = { 1: 35, 2: 10, 3: 40, 4: 30, 5: 50, 6: 70, 7: 80, 8: 75 }; // Rat:35, Cat:10, Dog:40, Wolf:30, Leopard:50, Tiger:70, Lion:80, Elephant:75
                 const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
 
                 // Dens and Traps relative to the player being evaluated (playerForMax)
@@ -3397,6 +3758,85 @@
             }
 
             /**
+             * Parses a board state string into a board object suitable for gameState.board.
+             * String format: "RankCoordsUpper/Lower,RankCoordsUpper/Lower,..." (e.g., "8A3,7G1,1a7")
+             * Uppercase coords = Orange, Lowercase = Yellow.
+             * @param {string} stateString - The board state string to parse.
+             * @returns {object|null} A board object { coords: pieceData } or null if parsing fails.
+             */
+            function parseBoardStateString(stateString) {
+                if (!stateString || typeof stateString !== 'string') {
+                    console.error("Parse Error: Invalid input string.");
+                    return null;
+                }
+
+                const parsedBoard = {};
+                const pieceStrings = stateString.trim().split(',');
+                const pieceRegex = /^([1-8])([a-gA-G][1-9])$/; // Matches Rank (1-8) and Coords (e.g., a1, G9)
+
+                for (const pieceStr of pieceStrings) {
+                    if (!pieceStr) continue; // Skip empty parts if trailing comma etc.
+                    const match = pieceStr.match(pieceRegex);
+
+                    if (!match) {
+                        console.error(`Parse Error: Invalid piece format "${pieceStr}" in state string.`);
+                        return null; // Invalid format for a piece
+                    }
+
+                    const rank = parseInt(match[1], 10);
+                    const coordsRaw = match[2];
+                    const coordsLower = coordsRaw.toLowerCase(); // Key for the board object is always lowercase
+
+                    // Validate coordinates range after converting to lowercase
+                    const rc = getRowCol(coordsLower);
+                    if (!rc) {
+                        console.error(`Parse Error: Invalid coordinates "${coordsRaw}" in state string.`);
+                        return null;
+                    }
+
+                    // Determine player based on original case
+                    const player = (coordsRaw === coordsRaw.toUpperCase()) ? PLAYERS.ORANGE : PLAYERS.YELLOW;
+
+                    // Create piece data object
+                    const pieceData = {
+                        player: player,
+                        rank: rank,
+                        isHungry: false // Pieces always start not hungry when loading state
+                    };
+
+                    // Add special abilities based on rank
+                    const abilities = SPECIAL_ABILITIES[rank];
+                    if (abilities) {
+                        pieceData.swims = abilities.swims || false;
+                        pieceData.attacksElephant = abilities.attacksElephant || false;
+                        pieceData.jumpH = abilities.jumpH || false;
+                        pieceData.jumpV = abilities.jumpV || false;
+                    } else {
+                        pieceData.swims = false; pieceData.attacksElephant = false;
+                        pieceData.jumpH = false; pieceData.jumpV = false;
+                    }
+
+                    // Check for duplicate piece placement
+                    if (parsedBoard[coordsLower]) {
+                         console.error(`Parse Error: Duplicate piece placement at "${coordsLower}" in state string.`);
+                         return null;
+                    }
+
+                    parsedBoard[coordsLower] = pieceData;
+                }
+
+                // Basic sanity check: ensure at least one piece exists? (Optional)
+                if (Object.keys(parsedBoard).length === 0 && stateString.length > 0) {
+                     console.error("Parse Error: String provided but no valid pieces parsed.");
+                     return null;
+                }
+
+
+                console.log("Successfully parsed board state:", parsedBoard);
+                return parsedBoard;
+            }
+
+            /**
              * Logs the current board state string to the console and the board state log element.
              * Increments the count for this state in `gameState.boardStateHistory` unless restoring.
              * @param {boolean} [isRestoring=false] - If true, logs the state but doesn't increment the history count (used during undo).
@@ -3415,6 +3855,31 @@
                     console.log(`Restored Board State:`, stateString);
                 }
                 return stateString; // Return the generated string
+            }
+
+            /**
+             * Shows or hides the "(0)" trap rank indicator on a piece's DOM element.
+             * @param {string} coords - The coordinates of the piece.
+             * @param {boolean} isTrapped - Whether the piece should show the trapped indicator.
+             */
+            function updateTrapIndicatorVisual(coords, isTrapped) {
+                const pieceElement = document.getElementById(getPieceElementId(coords));
+                if (!pieceElement) return; // Piece element might not exist (e.g., captured)
+
+                // Find the indicator span within the piece element
+                const indicatorSpan = pieceElement.querySelector('.trap-rank-indicator');
+                if (!indicatorSpan) {
+                    // This shouldn't happen if createPieceElement worked correctly, but add a safeguard
+                    console.warn("Trap indicator span not found for piece at", coords);
+                    return;
+                }
+
+                // Add or remove the 'visible' class based on the isTrapped flag
+                if (isTrapped) {
+                    indicatorSpan.classList.add('visible');
+                } else {
+                    indicatorSpan.classList.remove('visible');
+                }
             }
 
             /**
@@ -3565,11 +4030,77 @@
 
 
             // --- Event Listeners Setup ---
-            resetButton.addEventListener('click', initializeGame); // Reset game on button click
+            resetButton.addEventListener('click', () => initializeGame()); // Reset with default setup
             undoButton.addEventListener('click', undoMove); // Undo move on button click
-            // Other event listeners (drag, drop, click, touch, keydown) are added dynamically
-            // to pieces and cells when they are created or when interaction is enabled/disabled.
 
+            // --- Load State Button Listener ---
+            const loadStateButton = document.getElementById('load-state-button');
+            const boardStateInput = document.getElementById('board-state-input');
+            const loadStatusMessage = document.getElementById('load-status-message');
+
+            if (loadStateButton && boardStateInput && loadStatusMessage) {
+                loadStateButton.addEventListener('click', () => {
+                    const stateString = boardStateInput.value.trim();
+                    if (!stateString) {
+                        loadStatusMessage.textContent = "Please paste a state string first.";
+                        loadStatusMessage.style.color = 'red';
+                        return;
+                    }
+
+                    // Attempt to parse the string
+                    const parsedBoard = parseBoardStateString(stateString);
+
+                    if (parsedBoard) {
+                        // If parsing successful, initialize the game with this board
+                        initializeGame(parsedBoard); // Pass the parsed board to initializeGame
+                        loadStatusMessage.textContent = "Board state loaded successfully!";
+                        loadStatusMessage.style.color = '#28a745'; // Green color for success
+                        boardStateInput.value = ''; // Clear the input field on success
+                        updateStatus("Loaded custom state. Orange to move."); // Update main status
+                    } else {
+                        // If parsing failed, show an error message
+                        loadStatusMessage.textContent = "Invalid state string format. Please check console for details.";
+                        loadStatusMessage.style.color = 'red'; // Red color for error
+                        // Optionally flash the input border red
+                        boardStateInput.style.borderColor = 'red';
+                        setTimeout(() => { boardStateInput.style.borderColor = 'var(--medium-gray)'; }, 2000);
+                    }
+                });
+            } else {
+                console.error("Could not find Load State button, input field, or status message element.");
+            }
+            // --- End Load State Button Listener ---
+
+            // --- Accordion Logic ---
+            const rulesButton = document.getElementById('rules-toggle-button');
+            const rulesContent = document.getElementById('rules-content');
+
+            if (rulesButton && rulesContent) {
+                rulesButton.addEventListener('click', () => {
+                    const isExpanded = rulesButton.getAttribute('aria-expanded') === 'true';
+
+                    // Toggle ARIA attributes
+                    rulesButton.setAttribute('aria-expanded', !isExpanded);
+                    rulesContent.setAttribute('aria-hidden', isExpanded);
+
+                    // Toggle visual state (classes and max-height)
+                    rulesButton.classList.toggle('active');
+                    rulesContent.classList.toggle('expanded'); // Toggle padding via class
+
+                    if (!isExpanded) {
+                        // Expand: Set max-height to content's scroll height
+                        rulesContent.style.maxHeight = rulesContent.scrollHeight + 'px';
+                        rulesButton.querySelector('.rules-button-text').textContent = 'Hide Game Rules';
+                    } else {
+                        // Collapse: Set max-height back to 0 (or null)
+                        rulesContent.style.maxHeight = null; // Use null to revert to CSS value (0)
+                        rulesButton.querySelector('.rules-button-text').textContent = 'Show Game Rules';
+                    }
+                });
+            } else {
+                console.warn("Rules accordion button or content not found.");
+            }
+            // --- End Accordion Logic ---
 
             // --- Initial Game Setup ---
             console.log("Initializing Clesto Game...");
