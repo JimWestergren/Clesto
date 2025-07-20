@@ -45,7 +45,7 @@
             /* Standard focus indicator */
 
             /* Layout Dimensions */
-            --board-max-width: 490px;
+            --board-max-width: 550px;
             --ui-max-width: 300px;
         }
 
@@ -282,10 +282,10 @@
         }
 
         .piece:focus {
-            /* Custom focus style for pieces */
+            /* Custom focus style for pieces 
             outline: 3px solid var(--focus-outline);
             outline-offset: 1px;
-            z-index: 15;
+            z-index: 15; */
             /* Bring focused piece above others */
         }
 
@@ -359,9 +359,9 @@
 
         .selected {
             /* Outline for the currently selected piece */
-            outline: 3px solid var(--piece-select-glow); /* Blue solid */
-            outline-offset: 1px;
-            z-index: 16; /* Ensure selected outline is visually prominent */
+            /* outline: 3px solid var(--piece-select-glow); */ /* Blue solid */
+            /* outline-offset: 1px;
+            z-index: 16; */ /* Ensure selected outline is visually prominent */
         }
 
         .hungry {
@@ -444,6 +444,51 @@
             min-height: 1.5em;
             /* Prevent layout shifts */
         }
+
+        /* --- Clock Styling --- */
+        .clock-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            margin: 4px 0 8px 0; /* Space around clocks */
+            border: 1px solid var(--medium-gray);
+            border-radius: 4px;
+            background-color: #f8f9fa; /* Light background */
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+
+        .clock-label {
+            font-weight: 500;
+            font-size: 0.9em;
+            margin-right: 10px;
+            color: var(--dark-gray);
+        }
+
+        .clock-time {
+            font-family: 'Courier New', Courier, monospace; /* Monospaced font for consistent width */
+            font-size: 1.1em;
+            font-weight: bold;
+            padding: 2px 5px;
+            border-radius: 3px;
+            background-color: #e9ecef; /* Slightly darker background for time */
+        }
+
+        /* Style for the active clock */
+        .clock-container.clock-active {
+            border-color: var(--dark-gray);
+            background-color: #e9ecef; /* Highlight background */
+        }
+
+        /* Player-specific active clock time background (optional) */
+        #orange-clock-container.clock-active .clock-time {
+             background-color: var(--orange-color);
+             color: white;
+        }
+         #yellow-clock-container.clock-active .clock-time {
+             background-color: var(--yellow-color);
+             color: var(--dark-gray);
+         }
 
         /* --- Buttons --- */
         .button-container {
@@ -934,6 +979,18 @@
         <!-- UI and Information Section -->
         <section id="ui-info-section" role="region" aria-labelledby="ui-info-heading">
             <h2 id="ui-info-heading">Game Info</h2>
+
+            <!-- START: Clock Displays -->
+            <div class="clock-container" id="orange-clock-container">
+                <span class="clock-label">Orange Time:</span>
+                <span class="clock-time" id="orange-clock-time">10:00</span>
+            </div>
+            <div class="clock-container" id="yellow-clock-container">
+                <span class="clock-label">Yellow Time:</span>
+                <span class="clock-time" id="yellow-clock-time">10:00</span>
+            </div>
+            <!-- END: Clock Displays -->
+
             <p>Turn: <span id="turn-indicator">Orange</span></p>
             <p>Status: <span id="status-message" aria-live="polite">Loading...</span></p>
 
@@ -963,9 +1020,9 @@
 
             <!-- Load From State Section -->
             <div style="margin-top: 15px; border-top: 1px solid var(--medium-gray); padding-top: 10px;">
-                <label for="board-state-input" style="display: block; margin-bottom: 5px; font-weight: bold;">Load From State String:</label>
-                <input type="text" id="board-state-input" placeholder="Paste state string (e.g., 8G7,7A9,...)" style="width: calc(100% - 12px); padding: 6px; margin-bottom: 8px; border: 1px solid var(--medium-gray); border-radius: 3px;">
-                <button id="load-state-button" class="game-button" style="background-color: #28a745;">Load State</button> <!-- Green button -->
+                <label for="board-state-input" style="display: block; margin-bottom: 5px; font-weight: bold;">Load Board State:</label>
+                <input type="text" id="board-state-input" placeholder="Paste board state (e.g., 8G7,7A9,...)" style="width: calc(100% - 12px); padding: 6px; margin-bottom: 8px; border: 1px solid var(--medium-gray); border-radius: 3px;">
+                <button id="load-state-button" class="game-button" style="background-color: #28a745;">Load Board State</button> <!-- Green button -->
                 <p id="load-status-message" style="font-size: 0.85em; color: #6c757d; min-height: 1.2em; margin-top: 5px;"></p>
             </div>
             <!-- End Load From State Section -->
@@ -1365,6 +1422,20 @@
             let aiMoveTimeoutId = null; // To store the AI delay timeout
             let isLoadStateInputFocused = false; // Flag for input focus
 
+            // --- Clock Constants & State ---
+            const INITIAL_TIME_SECONDS = 10 * 60; // 10 minutes
+            const INCREMENT_SECONDS = 2; // 2 seconds bonus per move
+            let orangeTime = INITIAL_TIME_SECONDS;
+            let yellowTime = INITIAL_TIME_SECONDS;
+            let orangeTimerId = null; // To store the interval ID for Orange's clock
+            let yellowTimerId = null; // To store the interval ID for Yellow's clock
+
+            // --- DOM Element References (Add Clock Elements) ---
+            const orangeClockContainer = document.getElementById('orange-clock-container');
+            const yellowClockContainer = document.getElementById('yellow-clock-container');
+            const orangeClockTimeElement = document.getElementById('orange-clock-time');
+            const yellowClockTimeElement = document.getElementById('yellow-clock-time');
+
 
             // --- Utility Functions ---
             /**
@@ -1492,6 +1563,165 @@
                 return ALL_TRAP_SQUARES.has(coords);
             }
 
+            /**
+             * Formats remaining seconds into MM:SS string format.
+             * @param {number} totalSeconds - The total seconds remaining.
+             * @returns {string} Formatted time string (e.g., "09:58").
+             */
+            function formatTime(totalSeconds) {
+                const seconds = Math.max(0, totalSeconds); // Ensure time doesn't go below 0
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = Math.floor(seconds % 60);
+                const formattedMinutes = String(minutes).padStart(2, '0');
+                const formattedSeconds = String(remainingSeconds).padStart(2, '0');
+                return `${formattedMinutes}:${formattedSeconds}`;
+            }
+
+            /**
+             * Updates the clock display for a specific player in the DOM.
+             * @param {string} player - The player ('orange' or 'yellow').
+             * @param {number} timeSeconds - The time in seconds to display.
+             */
+            function updateClockDisplay(player, timeSeconds) {
+                const formattedTime = formatTime(timeSeconds);
+                if (player === PLAYERS.ORANGE && orangeClockTimeElement) {
+                    orangeClockTimeElement.textContent = formattedTime;
+                } else if (player === PLAYERS.YELLOW && yellowClockTimeElement) {
+                    yellowClockTimeElement.textContent = formattedTime;
+                }
+            }
+
+            /**
+             * Stops the interval timer for a specific player's clock.
+             * @param {string} player - The player ('orange' or 'yellow').
+             */
+            function stopClock(player) {
+                if (player === PLAYERS.ORANGE) {
+                    if (orangeTimerId !== null) {
+                        clearInterval(orangeTimerId);
+                        orangeTimerId = null;
+                        // console.log("Stopped Orange Clock");
+                    }
+                     if (orangeClockContainer) orangeClockContainer.classList.remove('clock-active');
+                } else if (player === PLAYERS.YELLOW) {
+                    if (yellowTimerId !== null) {
+                        clearInterval(yellowTimerId);
+                        yellowTimerId = null;
+                        // console.log("Stopped Yellow Clock");
+                    }
+                    if (yellowClockContainer) yellowClockContainer.classList.remove('clock-active');
+                }
+            }
+
+            /**
+             * Starts the interval timer for a specific player's clock.
+             * @param {string} player - The player ('orange' or 'yellow') whose clock to start.
+             */
+            function startClock(player) {
+                // Don't start if game is over
+                if (gameState.gameOver) return;
+
+                // Stop the other player's clock first (safety measure)
+                const otherPlayer = player === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+                stopClock(otherPlayer);
+
+                // Clear existing timer for the target player before starting a new one
+                stopClock(player);
+
+                // console.log(`Starting Clock for: ${player}`);
+                const tick = () => {
+                    if (player === PLAYERS.ORANGE) {
+                        orangeTime--;
+                        updateClockDisplay(PLAYERS.ORANGE, orangeTime);
+                        if (orangeTime <= 0) {
+                            // console.log("Orange time ran out.");
+                            stopClock(PLAYERS.ORANGE); // Stop the clock at 00:00
+                            // Requirement: Do nothing else when time runs out
+                        }
+                    } else if (player === PLAYERS.YELLOW) {
+                        yellowTime--;
+                        updateClockDisplay(PLAYERS.YELLOW, yellowTime);
+                        if (yellowTime <= 0) {
+                            // console.log("Yellow time ran out.");
+                            stopClock(PLAYERS.YELLOW); // Stop the clock at 00:00
+                             // Requirement: Do nothing else when time runs out
+                        }
+                    }
+                };
+
+                // Initial immediate tick to avoid 1-second delay on start/resume
+                tick();
+                // Then set the interval
+                if (player === PLAYERS.ORANGE) {
+                    orangeTimerId = setInterval(tick, 1000);
+                    if(orangeClockContainer) orangeClockContainer.classList.add('clock-active');
+                } else if (player === PLAYERS.YELLOW) {
+                    yellowTimerId = setInterval(tick, 1000);
+                    if(yellowClockContainer) yellowClockContainer.classList.add('clock-active');
+                }
+            }
+
+            /**
+             * Stops both players' clocks. Used for game end or pausing.
+             */
+            function pauseAllClocks() {
+                stopClock(PLAYERS.ORANGE);
+                stopClock(PLAYERS.YELLOW);
+                console.log("Paused All Clocks");
+            }
+
+            /**
+             * Resets clock times to initial values and updates displays. Stops timers.
+             */
+            function initializeClocks() {
+                pauseAllClocks(); // Ensure any running timers are stopped
+                orangeTime = INITIAL_TIME_SECONDS;
+                yellowTime = INITIAL_TIME_SECONDS;
+                updateClockDisplay(PLAYERS.ORANGE, orangeTime);
+                updateClockDisplay(PLAYERS.YELLOW, yellowTime);
+                 if(orangeClockContainer) orangeClockContainer.classList.remove('clock-active');
+                 if(yellowClockContainer) yellowClockContainer.classList.remove('clock-active');
+                console.log("Clocks Initialized");
+            }
+
+             /**
+             * Stops the clock of the player who just moved, adds increment, updates their display,
+             * and starts the opponent's clock. Call this *before* switching gameState.currentPlayer.
+             * @param {string} playerWhoMoved - The player who just completed their move.
+             */
+            function switchClocks(playerWhoMoved) {
+                if (gameState.gameOver) return; // Don't switch if game ended
+
+                // 1. Stop the clock for the player who moved
+                stopClock(playerWhoMoved);
+
+                // 2. Add increment
+                if (playerWhoMoved === PLAYERS.ORANGE) {
+                    orangeTime += INCREMENT_SECONDS;
+                    updateClockDisplay(PLAYERS.ORANGE, orangeTime);
+                } else if (playerWhoMoved === PLAYERS.YELLOW) {
+                    yellowTime += INCREMENT_SECONDS;
+                    updateClockDisplay(PLAYERS.YELLOW, yellowTime);
+                }
+                 console.log(`${playerWhoMoved} clock stopped, increment added.`);
+
+                // 3. Start the opponent's clock
+                const opponent = playerWhoMoved === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+                startClock(opponent);
+            }
+
+            /**
+             * Resumes the clock for the currently active player based on gameState.
+             * Used after loading state (undo) or switching game modes.
+             */
+            function resumeClockForCurrentPlayer() {
+                 if (gameState.gameOver) {
+                     pauseAllClocks();
+                     return;
+                 }
+                 console.log(`Resuming clock for current player: ${gameState.currentPlayer}`);
+                 startClock(gameState.currentPlayer);
+            }
 
             // --- Board Creation and Setup ---
 
@@ -1739,7 +1969,11 @@
                     boardStateHistory: JSON.parse(JSON.stringify(gameState.boardStateHistory)),
                     gameOver: gameState.gameOver,
                     winner: gameState.winner,
-                    playerLastMoves: JSON.parse(JSON.stringify(playerLastMoves))
+                    playerLastMoves: JSON.parse(JSON.stringify(playerLastMoves)),
+                    // --- Add Clock Times ---
+                    orangeTime: orangeTime,
+                    yellowTime: yellowTime
+                    // --- End Add Clock Times ---
                 };
                 gameHistory.push(stateToSave);
                 updateUndoButtonState();
@@ -1752,7 +1986,10 @@
              */
             function loadGameState(stateToLoad) {
                 if (!stateToLoad) return;
-                console.log("Loading game state (for Undo)...");
+                console.log("Loading game state (for Undo/Load)...");
+
+                // --- Stop Clocks Before Loading ---
+                pauseAllClocks(); // Stop any active timers
 
                 gameState.board = stateToLoad.board;
                 gameState.currentPlayer = stateToLoad.currentPlayer;
@@ -1762,25 +1999,33 @@
                 gameState.gameOver = stateToLoad.gameOver;
                 gameState.winner = stateToLoad.winner;
                 playerLastMoves = stateToLoad.playerLastMoves;
+                // --- Restore Clock Times ---
+                orangeTime = stateToLoad.orangeTime ?? INITIAL_TIME_SECONDS; // Use default if missing
+                yellowTime = stateToLoad.yellowTime ?? INITIAL_TIME_SECONDS; // Use default if missing
+                // --- Update Clock Displays ---
+                updateClockDisplay(PLAYERS.ORANGE, orangeTime);
+                updateClockDisplay(PLAYERS.YELLOW, yellowTime);
 
                 placePieces();
                 rebuildMoveLog();
-                // --- Apply Highlights for Loaded State ---
                 highlightLastMoves();
                 updateUI();
-                logBoardState(true);
+                logBoardState(true); // Log state without incrementing count
                 updateStatus(gameState.gameOver ? `Game Over: ${gameState.winner} wins!` : `${gameState.currentPlayer.toUpperCase()}'s turn.`);
 
                 if (!gameState.gameOver) {
-                    enablePlayerInteraction();
+                    // Interaction is handled AFTER load by the calling function (undoMove, initializeGame)
+                    // enablePlayerInteraction(); // DON'T enable here, let caller decide
                 } else {
-                    disablePlayerInteraction();
+                    disablePlayerInteraction(); // Disable if game was over
+                    pauseAllClocks(); // Ensure clocks stay stopped if game over
                 }
 
                 updateUndoButtonState();
                 clearHighlights(); // General selection highlights
                 selectedPieceCoords = null;
-                console.log("Game state loaded (Undo).");
+                console.log("Game state loaded.");
+                // Clocks are NOT started here; the function calling loadGameState (e.g., undoMove) will resume them.
             }
 
             /**
@@ -1798,11 +2043,11 @@
             }
 
             /**
-             * Handles the Undo button click. Reverts the game to the single previous state
-             * regardless of game mode (PvP or PvE).
+             * Handles the Undo button click. Reverts the game state to before the last move was made.
+             * This undoes only the single most recent move, regardless of game mode. Also restores clocks. // <-- Updated comment
              */
             function undoMove() {
-                // Prevent undo while AI is processing its turn (only relevant in PvE)
+                // --- Prevent undo while AI is thinking (Clock Independent Check) ---
                 if (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW && boardGridWrapper.style.pointerEvents === 'none') {
                     console.log("Cannot undo while AI is thinking.");
                     updateStatus("Cannot undo while AI is thinking.");
@@ -1816,36 +2061,58 @@
                     return;
                 }
 
-                // --- Determine how many states to undo ---
-                // Always undo only the single last move, regardless of mode.
-                const statesToUndo = 1;
-                // --- End determination ---
+                // --- Pause Clocks Before Undoing ---
+                pauseAllClocks();
 
-                console.log(`Undoing last ${statesToUndo} state...`);
+                // Pop the state representing the board *before* the last move was made.
+                // This is the exact state we want to restore to undo the last single move.
+                const stateToRestore = gameHistory.pop();
 
-                // Pop the required number of states (always 1) from the history
-                // Keep the popped state in case we need it (though we load the one before it)
-                const undoneState = gameHistory.pop(); // Remove the last state
-
-                // The state to restore is now the last one remaining in the history
-                // (or null if history becomes empty after popping)
-                const stateToRestore = gameHistory.length > 0 ? gameHistory[gameHistory.length - 1] : null;
-
-                if (stateToRestore) {
-                    // Load the state *before* the one we just popped
-                    loadGameState(stateToRestore);
-                    // Update status message - use the restored state's current player
-                    updateStatus(`Undo successful. ${gameState.currentPlayer.toUpperCase()}'s turn.`);
-                } else {
-                    // If history is empty after undo, reset the game to the initial setup
-                    console.log("History empty after undo, resetting game to initial state.");
-                    initializeGame(); // Reset using default INITIAL_SETUP
-                    updateStatus("Undo successful. Game reset to start.");
+                if (!stateToRestore) {
+                    // Safety check: Should not happen if length check passed.
+                    console.error("Undo Error: Popped state is null/undefined. History might be corrupted.");
+                    initializeGame(); // Reset as a safe fallback
+                    updateStatus("Undo error. Game reset.");
+                    updateUndoButtonState(); // Update button after reset
+                    return;
                 }
+
+                console.log("Undoing last move...");
+                // Load the state that was just popped from the history.
+                // This function now handles restoring clock times and updating displays, but NOT starting timers.
+                loadGameState(stateToRestore);
+
+                // Update status message based on the *restored* state's current player
+                updateStatus(`Undo successful. ${gameState.currentPlayer.toUpperCase()}'s turn.`);
 
                 // Update the Undo button's state based on the new history length
                 updateUndoButtonState();
-            }
+
+                // --- Resume Correct Clock ---
+                if (!gameState.gameOver) {
+                    // Check if AI turn needs to be re-triggered immediately
+                    if (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW) {
+                        console.log("AI turn after Undo in PvE mode. Scheduling AI move.");
+                        disablePlayerInteraction();
+                        undoButton.disabled = true; // Explicitly disable undo while AI thinks
+                        if (aiMoveTimeoutId) { clearTimeout(aiMoveTimeoutId); aiMoveTimeoutId = null; }
+                        // Start the AI's clock *before* the delay
+                        startClock(PLAYERS.YELLOW);
+                        aiMoveTimeoutId = setTimeout(triggerAIMove, 150); // Short delay (e.g., 150ms)
+                    } else {
+                        // Human turn (Orange PvE or either PvP), enable interaction and start their clock
+                        enablePlayerInteraction();
+                        startClock(gameState.currentPlayer); // Start clock for the player whose turn it now is
+                    }
+                } else {
+                    // If undo results in a game-over state, ensure clocks remain paused.
+                    pauseAllClocks();
+                    // Interaction should already be disabled by loadGameState if game was over
+                }
+                // Ensure accessibility is correct after potential enable/disable calls
+                updateAllPieceAccessibility();
+
+            } // End undoMove (Modified)
 
             /**
              * Enables or disables the Undo button based on the game history length, game over state, and AI thinking state.
@@ -1863,9 +2130,13 @@
              * Sets up the initial game state, creates the board, places pieces, and updates the UI.
              * Accepts an optional custom board state object to load from.
              * @param {object|null} [customBoard=null] - A board object ({ coords: pieceData }) to load instead of INITIAL_SETUP.
+             * @param {boolean} [isLoadingFromFile=false] - Flag to indicate if loading from a state string input.
              */
-            function initializeGame(customBoard = null) {
-                console.log("Initializing game..." + (customBoard ? " with custom state." : ""));
+            function initializeGame(customBoard = null, isLoadingFromFile = false) {
+                 console.log("Initializing game..." + (customBoard ? " with custom state." : ""));
+
+                // --- Initialize Clocks ---
+                initializeClocks(); // Reset times and display, stop timers
 
                 gameState = {
                     board: customBoard ? customBoard : JSON.parse(JSON.stringify(INITIAL_SETUP)),
@@ -1876,31 +2147,51 @@
                     gameOver: false,
                     winner: null
                 };
-                isPlayerVsPlayerMode = false;
-                const pvpToggle = document.getElementById('pvp-toggle');
-                if (pvpToggle) pvpToggle.checked = false;
+                // Reset PvP toggle state only if NOT loading from file
+                 if (!isLoadingFromFile) {
+                    isPlayerVsPlayerMode = false;
+                    const pvpToggle = document.getElementById('pvp-toggle');
+                    if (pvpToggle) pvpToggle.checked = false;
+                 } // Keep existing PvP state if loading from file
+
                 if (aiMoveTimeoutId) { clearTimeout(aiMoveTimeoutId); aiMoveTimeoutId = null; }
                 gameHistory = [];
 
-                // --- START: Reset playerLastMoves ---
                 playerLastMoves = {
                     [PLAYERS.ORANGE]: { from: null, to: null },
                     [PLAYERS.YELLOW]: { from: null, to: null }
                 };
-                // --- END: Reset playerLastMoves ---
 
-                if (!customBoard) {
-                    // Add abilities/initial state only if not loading custom board
-                     Object.values(gameState.board).forEach(piece => {
-                         if(piece) {
-                            piece.isHungry = false;
-                             const abilities = SPECIAL_ABILITIES[piece.rank];
-                             if (abilities) { Object.assign(piece, abilities); } // Simplified assignment
-                         }
-                    });
-                } else {
-                     Object.values(gameState.board).forEach(piece => { if(piece) piece.isHungry = false; });
-                }
+                // --- Apply abilities/hungry status ---
+                 if (!customBoard) {
+                     // Add abilities/initial state only if not loading custom board
+                      Object.values(gameState.board).forEach(piece => {
+                          if(piece) {
+                             piece.isHungry = false;
+                              const abilities = SPECIAL_ABILITIES[piece.rank];
+                              if (abilities) { Object.assign(piece, abilities); }
+                          }
+                     });
+                 } else {
+                      // When loading custom board, ensure hungry state is reset and abilities are present
+                      Object.values(gameState.board).forEach(piece => {
+                          if (piece) {
+                              piece.isHungry = false; // Reset hungry status
+                              const abilities = SPECIAL_ABILITIES[piece.rank];
+                              if (abilities) {
+                                  // Ensure essential ability flags are set if missing in loaded state
+                                  piece.swims = piece.swims ?? abilities.swims ?? false;
+                                  piece.attacksElephant = piece.attacksElephant ?? abilities.attacksElephant ?? false;
+                                  piece.jumpH = piece.jumpH ?? abilities.jumpH ?? false;
+                                  piece.jumpV = piece.jumpV ?? abilities.jumpV ?? false;
+                              } else {
+                                   // Ensure flags are false if no special abilities
+                                  piece.swims = false; piece.attacksElephant = false;
+                                  piece.jumpH = false; piece.jumpV = false;
+                              }
+                          }
+                      });
+                 }
 
                 createBoard();
                 placePieces();
@@ -1909,18 +2200,20 @@
                 boardStateLogElement.textContent = '';
                 updateStatus("Game Ready. Orange to move.");
                 updateUI();
-                clearHighlights(); // General selection highlights
-                logBoardState();
-                enablePlayerInteraction();
+                clearHighlights();
+                logBoardState(); // Log initial state
+                enablePlayerInteraction(); // Enable interaction for Orange
                 updateUndoButtonState();
                 selectedPieceCoords = null;
 
-                // --- START: Clear specific player highlights ---
                 clearPlayerLastMoveHighlight(PLAYERS.ORANGE);
                 clearPlayerLastMoveHighlight(PLAYERS.YELLOW);
-                // Call highlightLastMoves AFTER clearing to ensure clean slate visually
-                highlightLastMoves(); // This will apply nothing initially
-                // --- END: Clear specific player highlights ---
+                highlightLastMoves();
+
+                 // --- Start Orange's Clock ---
+                 if (!gameState.gameOver) {
+                    startClock(PLAYERS.ORANGE); // Start the clock for the first player
+                 }
 
                 console.log("Game Initialized. Orange starts.");
             }
@@ -2710,7 +3003,7 @@
              * Executes a validated move, updating the game state, moving the piece element,
              * handling captures, checking for win/loss conditions, managing hungry/starve rules,
              * logging the move, checking for repetition/stalemate, switching the player,
-             * potentially triggering the AI, and managing last move highlights.
+             * potentially triggering the AI, and managing last move highlights and clocks. // <-- Updated comment
              * @param {string} fromCoords - The starting coordinates of the move.
              * @param {string} toCoords - The ending coordinates of the move.
              */
@@ -2725,9 +3018,8 @@
                 }
                 const playerWhoMoved = gameState.currentPlayer; // Store player before any state changes
 
-                // --- START: Clear Previous Highlight for Current Player ---
+                // --- Clear Previous Highlight for Current Player ---
                 clearPlayerLastMoveHighlight(playerWhoMoved);
-                // --- END: Clear Previous Highlight ---
 
                 // Use a fresh copy of piece data for validation to avoid potential mutation issues
                 const validationResult = isValidMove(fromCoords, toCoords, { ...piece });
@@ -2740,6 +3032,7 @@
                     return;
                 }
 
+                // --- Save State & Clear UI ---
                 saveGameState(); // Save state *after* clearing highlight but *before* making changes
                 clearHighlights(); // General selection highlights (keep this)
                 deselectPiece(); // Deselect piece visually
@@ -2794,7 +3087,7 @@
                     }
 
                     // Update Attacker's Hungry Status After Capture
-                    if (isAttack) {
+                     if (isAttack) {
                          const attackerPieceData = gameState.board[toCoords]; // Re-fetch data from final location
                          if (attackerPieceData) {
                              attackerPieceData.isHungry = false; // Attacker is no longer hungry
@@ -2802,31 +3095,37 @@
                              updateHungryVisual(toCoords, false, pieceElement); // Update visual using the element
                          }
                     }
-                    // Update accessibility (applies AFTER all visual updates for the move)
-                    updatePieceAccessibility(pieceElement);
+                    // Accessibility update happens AFTER player switch usually, or via updateUI()
 
-                    } else {
-                        // Fallback if element somehow missing - redraw all pieces
-                        console.error(`!!! Piece element not found for move ${fromCoords} -> ${toCoords}! Could not update DOM element. Re-placing all pieces.`);
-                        placePieces(); // Less efficient, but ensures consistency
-                    }
+                } else {
+                    // Fallback if element somehow missing - redraw all pieces
+                    console.error(`!!! Piece element not found for move ${fromCoords} -> ${toCoords}! Could not update DOM element. Re-placing all pieces.`);
+                    placePieces(); // Less efficient, but ensures consistency
+                }
 
                 notation += toCoords; // Complete move notation
 
                 // --- Check Win Conditions ---
+                const opponent = playerWhoMoved === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
                 const opponentDen = playerWhoMoved === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
                 if (toCoords === opponentDen) {
                     gameState.winner = playerWhoMoved; gameState.gameOver = true;
                     updateStatus(`${playerWhoMoved.toUpperCase()} wins by reaching the den!${statusAction}`);
-                    logMove(notation, playerWhoMoved); logBoardState(); updateUI(); disablePlayerInteraction(); updateUndoButtonState(); return;
+                    logMove(notation, playerWhoMoved); logBoardState(); updateUI(); disablePlayerInteraction();
+                    // --- Stop Clocks on Game Over ---
+                    pauseAllClocks();
+                    updateUndoButtonState(); return;
                 }
-                const opponent = playerWhoMoved === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+                // Check elimination win
                 let opponentPieceCount = 0;
                 for (const coords in gameState.board) { if (gameState.board[coords]?.player === opponent) { opponentPieceCount++; } }
                 if (opponentPieceCount === 0) {
                     gameState.winner = playerWhoMoved; gameState.gameOver = true;
                     updateStatus(`${playerWhoMoved.toUpperCase()} wins by eliminating all opponent pieces!${statusAction}`);
-                    logMove(notation, playerWhoMoved); logBoardState(); updateUI(); disablePlayerInteraction(); updateUndoButtonState(); return;
+                    logMove(notation, playerWhoMoved); logBoardState(); updateUI(); disablePlayerInteraction();
+                    // --- Stop Clocks on Game Over ---
+                    pauseAllClocks();
+                    updateUndoButtonState(); return;
                 }
 
                 // --- Declare Hungry Animals for the *Next* Player ---
@@ -2853,41 +3152,47 @@
                 logMove(notation, playerWhoMoved);
                 const boardStateString = logBoardState();
 
-                 // --- START: Store This Move for Highlighting ---
-                 playerLastMoves[playerWhoMoved] = { from: fromCoords, to: toCoords };
-                 console.log(`Stored last move for ${playerWhoMoved}:`, playerLastMoves[playerWhoMoved]);
-                 // --- END: Store This Move ---
+                // --- Store This Move for Highlighting ---
+                playerLastMoves[playerWhoMoved] = { from: fromCoords, to: toCoords };
+                highlightLastMoves(); // Apply highlights immediately *before* switching clocks/player
+
+                // --- Switch Clocks (BEFORE switching player) ---
+                switchClocks(playerWhoMoved);
 
                 // --- Check Draw/Loss Conditions (Stalemate first, then Repetition) ---
                 if (checkForStalemate(opponent)) { // Check if the NEXT player is stalemated
                     gameState.winner = playerWhoMoved; // Stalemate = loss for opponent, win for current player
                     gameState.gameOver = true;
                     updateStatus(`Stalemate! ${opponent.toUpperCase()} has no valid moves. ${playerWhoMoved.toUpperCase()} wins!`);
-                    disablePlayerInteraction(); updateUI(); updateUndoButtonState(); return;
+                    disablePlayerInteraction(); updateUI();
+                    // --- Stop Clocks on Game Over ---
+                    pauseAllClocks();
+                    updateUndoButtonState(); return;
                 }
-                // Repetition Check (Game does not end, just prevents move via isValidMove)
-                // No action needed here, validation happens before performMove
+                // Repetition Check (handled by isValidMove)
 
                 // --- Switch Player and Update UI ---
                 gameState.currentPlayer = opponent; // Switch to the opponent
                 if (playerWhoMoved === PLAYERS.YELLOW) { gameState.turnNumber++; } // Increment turn after Yellow moves
                 updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn.${statusAction}`); // Update status for the new current player
-                updateUI(); updateUndoButtonState(); updateAllPieceAccessibility();
-
-                // --- START: Apply All Active Highlights ---
-                highlightLastMoves(); // Apply highlights based on the updated playerLastMoves state
-                // --- END: Apply All Active Highlights ---
+                updateUI(); // Includes accessibility update
+                updateUndoButtonState(); // Update based on new state
 
                 // --- Trigger AI if applicable ---
                 if (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
-                    disablePlayerInteraction(); undoButton.disabled = true;
+                    disablePlayerInteraction();
+                    undoButton.disabled = true; // Disable undo during AI thinking
                     if (aiMoveTimeoutId) clearTimeout(aiMoveTimeoutId);
+                    // AI clock is already running, just wait for think time
                     aiMoveTimeoutId = setTimeout(triggerAIMove, 1500);
                 } else if (!gameState.gameOver) {
-                    // Ensure interaction is enabled if it's a human turn (Orange PvE or either player PvP)
-                    enablePlayerInteraction();
+                    enablePlayerInteraction(); // Ensure interaction is enabled for human turn
+                } else {
+                    // Ensure clocks are stopped if game ended for any other reason here
+                    pauseAllClocks();
                 }
-            } // End performMove
+
+            } // End performMove (Modified)
 
             /**
              * Checks if the specified player has any valid moves available in the current board state.
@@ -4279,12 +4584,11 @@
                     const parsedBoard = parseBoardStateString(cleanedStateString);
 
                     if (parsedBoard) {
-                        // If parsing successful, initialize the game with this board
-                        initializeGame(parsedBoard); // Pass the parsed board to initializeGame
+                        // --- Pass flag to initializeGame ---
+                        initializeGame(parsedBoard, true); // Pass true for isLoadingFromFile
                         loadStatusMessage.textContent = "Board state loaded successfully!";
-                        loadStatusMessage.style.color = '#28a745'; // Green color for success
-                        boardStateInput.value = ''; // Clear the input field on success
-                        updateStatus("Loaded custom state. Orange to move."); // Update main status
+                        loadStatusMessage.style.color = '#28a745';
+                        boardStateInput.value = '';
                     } else {
                         // If parsing failed, show an error message
                         loadStatusMessage.textContent = "Invalid state string format. Please check console for details.";
@@ -4346,49 +4650,41 @@
 
             if (pvpToggleButton) {
                 pvpToggleButton.addEventListener('change', (event) => {
-                    // Store previous mode just in case, though not strictly needed in this version
-                    // const oldModeIsPvP = isPlayerVsPlayerMode;
-                    isPlayerVsPlayerMode = event.target.checked; // Set new mode state
+                    // ... (keep existing mode state update and AI timeout clearing) ...
+                    isPlayerVsPlayerMode = event.target.checked;
                     console.log(`Player vs Player mode ${isPlayerVsPlayerMode ? 'ENABLED' : 'DISABLED'}`);
+                    if (aiMoveTimeoutId) { clearTimeout(aiMoveTimeoutId); aiMoveTimeoutId = null; }
 
-                    // --- Step 1: Always clear any pending AI move timeout ---
-                    if (aiMoveTimeoutId) {
-                        console.log("Clearing existing AI move timeout ID:", aiMoveTimeoutId);
-                        clearTimeout(aiMoveTimeoutId);
-                        aiMoveTimeoutId = null;
-                    }
+                    // --- Pause Clocks During Switch ---
+                    pauseAllClocks();
 
-                    // --- Step 2: Determine required interaction state based on NEW mode and current player ---
+                    // Determine required interaction state and resume clock
                     if (isPlayerVsPlayerMode) {
-                        // If switching TO PvP (or already in PvP):
-                        // Interaction should always be enabled, regardless of whose turn it is.
+                        // Switching TO PvP: Enable interaction, resume clock for current player
                         console.log("PvP Mode ACTIVE: Ensuring player interaction is enabled.");
-                        enablePlayerInteraction(); // Enable for current player
+                        enablePlayerInteraction();
                         updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn (PvP Mode)`);
+                        resumeClockForCurrentPlayer(); // Start the appropriate clock
                     } else {
-                        // If switching TO PvE (or already in PvE):
+                        // Switching TO PvE:
                         if (gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
-                            // AI's turn in PvE mode: Disable interaction and schedule AI move.
+                            // AI's turn: Disable interaction, start AI clock, schedule AI move.
                             console.log("PvE Mode ACTIVE and Yellow's turn: Disabling interaction, scheduling AI move.");
                             disablePlayerInteraction();
-                            // AI Move scheduling happens here
-                            console.log("AI Turn (Triggered by mode switch): Waiting 1.5 seconds before thinking...");
-                            aiMoveTimeoutId = setTimeout(triggerAIMove, 1500); // Set the timeout
+                            undoButton.disabled = true; // Disable undo during AI thinking
+                            startClock(PLAYERS.YELLOW); // Start AI clock *before* the delay
+                            aiMoveTimeoutId = setTimeout(triggerAIMove, 1500);
                         } else {
-                            // Human's turn (Orange) in PvE mode: Ensure interaction is enabled.
-                             console.log("PvE Mode ACTIVE and Orange's turn: Ensuring player interaction is enabled.");
-                            enablePlayerInteraction(); // Ensure Orange can move
-                            // Update status maybe?
-                            // updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn`);
+                            // Human's turn (Orange): Enable interaction, start Orange clock.
+                            console.log("PvE Mode ACTIVE and Orange's turn: Ensuring player interaction is enabled.");
+                            enablePlayerInteraction();
+                            resumeClockForCurrentPlayer(); // Start Orange's clock
                         }
                     }
 
-                    // --- Step 3: Always update accessibility for pieces and state of Undo button ---
-                    // updateAllPieceAccessibility is called inside enable/disablePlayerInteraction,
-                    // but calling it again ensures consistency if needed.
-                    updateAllPieceAccessibility(); // Reflects PvP mode or current player
-                    updateUndoButtonState(); // Update based on new interaction state/game over
-
+                    // Update accessibility and Undo button state
+                    updateAllPieceAccessibility();
+                    updateUndoButtonState();
                 });
             } else {
                 console.warn("PvP toggle button not found.");
