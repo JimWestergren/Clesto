@@ -17,34 +17,32 @@
     <style>
         /* --- Global Variables & Basic Setup --- */
         :root {
-            /* Player Colors */
+            /* Player Colors (Keep As Is) */
             --orange-color: #E67E22;
             --yellow-color: #F1C40F;
             --dark-orange: #D35400;
             --dark-yellow: #F39C12;
 
-            /* UI Colors */
-            --light-gray: #f8f9fa;
-            --medium-gray: #dee2e6;
-            --dark-gray: #343a40;
+            /* UI Colors (Will be largely overridden, but set sensible defaults) */
+            --primary-bg: #6fb367;      /* Main Green Background */
+            --secondary-bg: #fdf6e3;    /* Light Cream/Beige for Panels */
+            --tertiary-bg: #f5f5f5;     /* Lighter Grey for Logs/Code */
+            --text-dark: #4a4a4a;       /* Dark Text for Readability */
+            --text-light: #ffffff;      /* Light Text (e.g., on buttons) */
+            --border-color: #a9a9a9;    /* Default Border */
+            --button-default-bg: #4CAF50; /* Default Green Button */
+            --button-default-hover: #45a049; /* Darker Green Hover */
 
-            /* Highlight & Feedback Colors */
+            /* Highlight & Feedback Colors (Keep As Is) */
             --cell-highlight-move: rgba(0, 255, 0, 0.7);
-            /* Green for valid move */
             --cell-highlight-attack: rgba(255, 0, 0, 0.7);
-            /* Red for valid attack */
             --piece-select-glow: rgba(0, 191, 255, 0.9);
-            /* Blue glow for selected piece */
             --hungry-outline: rgba(255, 0, 0, 0.8);
-            /* Dashed red outline for hungry pieces */
             --ai-move-from-bg: rgba(0, 0, 255, 0.15);
-            /* Light blue for AI's previous move start */
             --ai-move-to-bg: rgba(0, 0, 255, 0.3);
-            /* Darker blue for AI's previous move end */
             --focus-outline: 2px solid #007bff;
-            /* Standard focus indicator */
 
-            /* Layout Dimensions */
+            /* Layout Dimensions (Keep As Is) */
             --board-max-width: 550px;
             --ui-max-width: 300px;
         }
@@ -54,8 +52,8 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            background-color: var(--light-gray);
-            color: var(--dark-gray);
+            background-color: var(--primary-bg); /* Use Green Background */
+            color: var(--text-dark);           /* Default Dark Text */
             padding: 10px;
             margin: 0;
             box-sizing: border-box;
@@ -66,15 +64,15 @@
         h1 {
             margin-top: 10px;
             margin-bottom: 15px;
-            color: var(--dark-gray);
+            color: var(--text-light); /* White text on green background */
             font-weight: 300;
-            border-bottom: 1px solid var(--medium-gray);
+            /* border-bottom: 1px solid var(--medium-gray); Remove border */
             padding-bottom: 10px;
             font-size: 1.8em;
             text-align: center;
             width: 100%;
-            /* Max width matches the combined width of board and UI */
             max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px);
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4); /* Add subtle shadow */
         }
 
         main {
@@ -246,7 +244,7 @@
             top: 0;
             /* Top position set by JavaScript */
 
-            cursor: grab;
+            /* CURSOR REMOVED - Will be applied conditionally via JS/CSS class */
             display: flex;
             justify-content: center;
             align-items: center;
@@ -301,6 +299,11 @@
             /* Enhance shadow */
             transition: transform 0.15s ease-out, box-shadow 0.2s ease, outline 0.2s ease;
             /* Faster transition while dragging */
+        }
+
+        /* --- Movable Piece Cursor --- */
+        .piece.movable {
+             cursor: grab; /* Apply hand cursor only when piece is interactive */
         }
 
         .piece.captured {
@@ -384,12 +387,10 @@
         #ui-info-section {
             width: var(--ui-max-width);
             max-width: 100%;
-            /* Responsive width */
-            border: none;
+            border: 1px solid var(--border-color); /* Use new border color */
             padding: 20px;
-            background-color: #ffffff;
+            background-color: var(--secondary-bg); /* Use Cream/Beige background */
             height: fit-content;
-            /* Adjust height based on content */
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             border-radius: 8px;
             display: flex;
@@ -401,10 +402,10 @@
         #ui-info-section h3 {
             margin-top: 0;
             margin-bottom: 15px;
-            border-bottom: 1px solid var(--medium-gray);
+            border-bottom: 1px solid var(--border-color); /* Use new border color */
             padding-bottom: 8px;
-            font-weight: 400;
-            color: var(--dark-gray);
+            font-weight: 500; /* Slightly bolder */
+            color: var(--text-dark); /* Use new dark text color */
         }
 
         #ui-info-section h3 {
@@ -451,10 +452,10 @@
             justify-content: space-between;
             align-items: center;
             padding: 6px 10px;
-            margin: 4px 0 8px 0; /* Space around clocks */
-            border: 1px solid var(--medium-gray);
+            margin: 4px 0 8px 0;
+            border: 1px solid var(--border-color); /* Use new border color */
             border-radius: 4px;
-            background-color: #f8f9fa; /* Light background */
+            background-color: #f0e8d1; /* Slightly different cream for clocks */
             transition: background-color 0.3s ease, border-color 0.3s ease;
         }
 
@@ -462,22 +463,23 @@
             font-weight: 500;
             font-size: 0.9em;
             margin-right: 10px;
-            color: var(--dark-gray);
+            color: var(--text-dark); /* Use new dark text color */
         }
 
         .clock-time {
-            font-family: 'Courier New', Courier, monospace; /* Monospaced font for consistent width */
+            font-family: 'Courier New', Courier, monospace;
             font-size: 1.1em;
             font-weight: bold;
             padding: 2px 5px;
             border-radius: 3px;
-            background-color: #e9ecef; /* Slightly darker background for time */
+            background-color: #e9e0c7; /* Background matching hover/active toggle */
+            color: var(--text-dark); /* Default dark text */
         }
 
         /* Style for the active clock */
         .clock-container.clock-active {
-            border-color: var(--dark-gray);
-            background-color: #e9ecef; /* Highlight background */
+            border-color: var(--text-dark); /* Use dark text color for active border */
+            background-color: #e9e0c7; /* Match time background */
         }
 
         /* Player-specific active clock time background (optional) */
@@ -507,18 +509,16 @@
             border: none;
             font-size: 0.95em;
             transition: background-color 0.2s ease, box-shadow 0.2s ease;
-            background-color: #6c757d;
-            /* Default gray */
-            color: white;
+            background-color: var(--button-default-bg); /* Use Green Button color */
+            color: var(--text-light);                   /* Use Light Text color */
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             outline: none;
-            /* Custom focus */
             margin-bottom: 5px;
-            /* Spacing when wrapping */
         }
 
         .game-button:hover {
             box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+            background-color: var(--button-default-hover); /* Darker green on hover */
         }
 
         .game-button:focus-visible {
@@ -528,12 +528,11 @@
 
         /* Specific button colors */
         #reset-button {
-            background-color: #007bff;
-            /* Blue */
+            background-color: var(--button-default-bg); /* Match default green */
         }
 
         #reset-button:hover {
-            background-color: #0056b3;
+            background-color: var(--button-default-hover); /* Match default green hover */
         }
 
         #undo-button {
@@ -591,7 +590,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #ccc;
+            background-color: #bdbdbd; /* Darker gray for inactive */
             transition: .4s;
         }
 
@@ -635,14 +634,13 @@
         /* --- Logs --- */
         #move-log {
             height: 220px;
-            /* Fixed height with scrolling */
             overflow-y: auto;
-            border: 1px solid var(--medium-gray);
+            border: 1px solid var(--border-color); /* Use new border color */
             border-radius: 5px;
             padding: 8px 10px;
             margin-top: 10px;
             font-size: 0.9em;
-            background-color: #ffffff;
+            background-color: var(--tertiary-bg); /* Use Lighter Grey background */
             line-height: 1.6;
         }
 
@@ -697,15 +695,14 @@
         }
 
         #board-state-log {
-            /* Displays a string representation of the board state (for debugging/repetition check) */
             margin-top: 10px;
-            border: 1px solid var(--medium-gray);
+            border: 1px solid var(--border-color); /* Use new border color */
             border-radius: 5px;
             padding: 10px;
             font-size: 0.75em;
             font-family: monospace;
             word-wrap: break-word;
-            background-color: #ffffff;
+            background-color: var(--tertiary-bg); /* Use Lighter Grey background */
             max-height: 90px;
             overflow-y: auto;
             line-height: 1.4;
@@ -717,8 +714,8 @@
             max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px);
             margin-top: 20px;
             padding: 15px;
-            background-color: #f1f3f5;
-            border: 1px solid var(--medium-gray);
+            background-color: var(--secondary-bg); /* Use Cream/Beige background */
+            border: 1px solid var(--border-color); /* Use new border color */
             border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             box-sizing: border-box;
@@ -727,27 +724,27 @@
         #debug-log-container h2 {
             margin-top: 0;
             margin-bottom: 10px;
-            font-weight: 400;
-            border-bottom: 1px solid var(--medium-gray);
+            font-weight: 500; /* Slightly bolder */
+            border-bottom: 1px solid var(--border-color); /* Use new border color */
             padding-bottom: 5px;
             font-size: 1.2em;
+            color: var(--text-dark); /* Use new dark text color */
         }
 
         #debug-log-output {
             height: 200px;
             max-height: 40vh;
-            /* Limit height relative to viewport */
             overflow-y: auto;
-            background-color: #ffffff;
-            border: 1px solid var(--medium-gray);
+            background-color: var(--tertiary-bg); /* Use Lighter Grey background */
+            border: 1px solid var(--border-color); /* Use new border color */
             border-radius: 3px;
             padding: 8px;
             font-family: monospace;
             font-size: 0.8em;
             white-space: pre-wrap;
-            /* Wrap long lines */
             word-break: break-word;
             line-height: 1.4;
+            color: var(--text-dark); /* Ensure default text color */
         }
 
         .debug-log-entry {
@@ -784,17 +781,17 @@
             width: 100%;
             max-width: calc(var(--board-max-width) + var(--ui-max-width) + 40px); /* Match main content width */
             margin: 15px auto 15px auto; /* Add some space around it */
-            border: 1px solid var(--medium-gray);
+            border: 1px solid var(--border-color); /* Use new border color */
             border-radius: 5px;
             overflow: hidden; /* Clip content during transition */
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             box-sizing: border-box;
-            background-color: #f8f9fa; /* Light background */
+            background-color: var(--secondary-bg); /* Use Cream/Beige background */
         }
 
         .rules-toggle-button {
-            background-color: #e9ecef; /* Slightly darker header background */
-            color: var(--dark-gray);
+            background-color: #e8e0c9; /* Slightly darker cream for header */
+            color: var(--text-dark); /* Use new dark text color */
             cursor: pointer;
             padding: 12px 18px;
             width: 100%;
@@ -804,14 +801,14 @@
             font-size: 1.1em;
             transition: background-color 0.3s ease;
             display: flex;
-            justify-content: space-between; /* Space between text and icon */
+            justify-content: space-between;
             align-items: center;
             font-weight: 500;
         }
 
         .rules-toggle-button:hover,
         .rules-toggle-button.active {
-            background-color: #dee2e6; /* Darker on hover/active */
+            background-color: #dcd4b8; /* Darker cream on hover/active */
         }
 
         .rules-toggle-button:focus-visible {
@@ -831,12 +828,13 @@
         }
 
         .rules-content {
-            padding: 0 18px; /* Add padding only when open */
-            background-color: white;
-            max-height: 0; /* Initially collapsed */
+            padding: 0 18px;
+            background-color: var(--secondary-bg); /* Match panel background */
+            max-height: 0;
             overflow: hidden;
-            transition: max-height 0.3s ease-out, padding 0.3s ease-out; /* Smooth transition */
-            border-top: 1px solid var(--medium-gray); /* Separator line */
+            transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+            border-top: 1px solid var(--border-color); /* Use new border color */
+            color: var(--text-dark); /* Ensure text color */
         }
 
         .rules-content.expanded {
@@ -848,8 +846,9 @@
         .rules-content h3 {
             margin-top: 15px;
             margin-bottom: 8px;
-            color: var(--dark-orange);
-            border-bottom: 1px solid var(--medium-gray);
+            color: var(--text-dark); /* Use standard dark text */
+            font-weight: 600;      /* Make slightly bolder */
+            border-bottom: 1px solid var(--border-color); /* Use new border color */
             padding-bottom: 4px;
         }
          .rules-content h3:first-child {
@@ -859,7 +858,7 @@
         .rules-content h4 {
             margin-top: 12px;
             margin-bottom: 5px;
-            color: var(--dark-gray);
+            color: #5a5a5a; /* Slightly lighter dark text */
         }
 
 
@@ -1922,27 +1921,28 @@
 
 
             /**
-             * Updates the tabindex and draggable attributes of a piece element based on the current game state.
-             * Pieces are only interactive (focusable, draggable) for the current player during their turn.
+             * Updates the tabindex, draggable attributes, AND cursor style (via .movable class)
+             * of a piece element based on the current game state.
+             * Pieces are only interactive (focusable, draggable, hand cursor) for the current player
+             * during their turn (or always in PvP mode).
              * @param {HTMLElement} pieceElement - The piece element to update.
              */
             function updatePieceAccessibility(pieceElement) {
                 if (!pieceElement) return;
                 const piecePlayer = pieceElement.dataset.player;
-                // --- MODIFIED CONDITION ---
-                // Enable interaction if:
-                // 1. Game is not over AND
-                // 2. ( PvP mode is ON OR the piece belongs to the current player )
+
+                // Determine if the piece should be interactive
                 const shouldBeInteractive = !gameState.gameOver &&
                                             (isPlayerVsPlayerMode || piecePlayer === gameState.currentPlayer);
-                // --- END MODIFICATION ---
 
                 if (shouldBeInteractive) {
                     pieceElement.setAttribute('tabindex', '0'); // Allow focus
                     pieceElement.draggable = true; // Allow dragging
+                    pieceElement.classList.add('movable'); // Add class for hand cursor
                 } else {
                     pieceElement.setAttribute('tabindex', '-1'); // Disallow focus
                     pieceElement.draggable = false; // Disallow dragging
+                    pieceElement.classList.remove('movable'); // Remove class for hand cursor
                 }
             }
 
