@@ -1591,8 +1591,8 @@
         const AI_WOLF_CAT_DEFENSE_BONUS = 15;        // BONUS for Wolf/Cat being defensive early (Increased)
         const AI_WOLF_CAT_ADVANCE_PENALTY_MULT = -3.0;// PENALTY per row Wolf/Cat advance (NEW - Negative Value!)
         const AI_BLOCKING_JUMPER_PENALTY = -175;     // Penalty for Wolf/Cat blocking jump squares (Increased More)
-        const AI_TRAP_DANGER_PENALTY = 0;         // AI piece vulnerable ON a trap
-        const AI_TRAP_ATTACK_VULNERABILITY = 0;   // AI piece vulnerable TO a trap attack
+        const AI_TRAP_DANGER_PENALTY = -150;         // AI piece vulnerable ON a trap
+        const AI_TRAP_ATTACK_VULNERABILITY = -100;   // AI piece vulnerable TO a trap attack
         const AI_IS_THREATENED_PENALTY = -15;        // Penalty if AI piece can be captured next turn (Low)
         // --- Piece Values ---
         const AI_PIECE_VALUES = { 1: 45, 2: 5, 3: 50, 4: 20, 5: 45, 6: 70, 7: 80, 8: 70 }; // Wolf/Cat lower value
@@ -2093,22 +2093,41 @@
 
         /**
          * Checks if the specified player has any move that wins immediately (reaches opponent's den).
+         * Logs checks during non-simulation calls.
          * @param {object} boardState - The board state to check.
          * @param {string} player - The player whose winning moves to check.
+         * @param {boolean} [isSimulation=false] - Flag to suppress logging. // NEW PARAMETER
          * @returns {object|null} The winning move ({ from, to }) or null if none found.
          */
-        function findImmediateWinningMove(boardState, player) {
+        function findImmediateWinningMove(boardState, player, isSimulation = false) { // ADD isSimulation
             const opponentDen = player === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
-            const moves = getAllValidMoves(boardState, player, true); // Simulate when checking
+            // Pass isSimulation flag down
+            const moves = getAllValidMoves(boardState, player, isSimulation); // Use simulation flag
+            if (!isSimulation) console.log(`[AI Win Check] Checking ${moves.length} moves for immediate win to ${opponentDen}`); // Log start
+
             for (const move of moves) {
                 if (move.to === opponentDen) {
-                    // Ensure the moving piece isn't hungry (hungry cannot win)
-                    if (!boardState[move.from]?.isHungry) {
-                        return move;
+                    const movingPiece = boardState[move.from];
+                    const isHungry = movingPiece?.isHungry || false; // Default to false if piece missing (shouldn't happen)
+
+                    // Log the check result ONLY if not simulating
+                    if (!isSimulation) {
+                         if (isHungry) {
+                             console.log(`[AI Win Check] Found potential win ${move.from} -> ${move.to}. DISCARDED (Piece is hungry).`);
+                         } else {
+                              console.log(`[AI Win Check] Found VALID win ${move.from} -> ${move.to}.`);
+                         }
                     }
+
+                    // Return the move ONLY if piece is NOT hungry
+                    if (!isHungry) {
+                        return move; // Found a valid winning move
+                    }
+                    // If hungry, continue loop to check other moves (unlikely but possible)
                 }
             }
-            return null;
+             if (!isSimulation) console.log(`[AI Win Check] No immediate winning move found.`); // Log end if no win found
+            return null; // No non-hungry winning move found
         }
 
         /**
@@ -3967,7 +3986,7 @@
 
         /**
          * Main AI decision function. Implements prioritized checks, dynamic depth, and falls back to Minimax.
-         * Uses static evaluation for choosing counter-moves. // <-- Updated comment
+         * Uses static evaluation for choosing counter-moves.
          */
         function triggerAIMove() {
             console.log("AI (Yellow) is thinking...");
@@ -3983,15 +4002,28 @@
             console.log(`AI using search depth: ${currentDepth} (Total Pieces: ${totalPieces})`);
 
             // 1. Get all valid moves for AI
-            const allMyMoves = getAllValidMoves(gameState.board, player, false);
+            const allMyMoves = getAllValidMoves(gameState.board, player, false); // Not simulation
 
             if (allMyMoves.length === 0) {
-                // ... (handle stalemate/loss) ...
+                console.log("AI has no valid moves! Checking game end conditions.");
+                if (!gameState.gameOver) {
+                    if (checkForStalemate(player)) {
+                        gameState.winner = null; gameState.gameOver = true;
+                        updateStatus("Stalemate! AI (Yellow) has no valid moves.");
+                        pauseAllClocks();
+                    } else {
+                        gameState.winner = PLAYERS.ORANGE; gameState.gameOver = true;
+                        updateStatus("AI Error or No Moves Found! Orange wins!");
+                        pauseAllClocks();
+                    }
+                    disablePlayerInteraction(); updateUI(); updateUndoButtonState();
+                }
                 return;
             }
 
             // --- Priority 1: Can AI win immediately? ---
-            const winningMove = findImmediateWinningMove(gameState.board, player);
+            // Pass the simulation flag (false here, as it's the actual game state)
+            const winningMove = findImmediateWinningMove(gameState.board, player, false); // Pass false
             if (winningMove) {
                 const aiEndTime = performance.now();
                 console.log(`AI Priority 1: Found winning move ${winningMove.from} -> ${winningMove.to}. Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
@@ -4334,13 +4366,13 @@
             // Use constants
             const pieceValues = AI_PIECE_VALUES;
             const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow;
-            const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+            const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange; // Opponent Den (Target)
             const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange;
             const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow;
 
             const adjacentToMaxDen = getAdjacentCoords(maxDen);
-            const adjacentToMinDen = getAdjacentCoords(minDen);
-            const twoSquaresFromMinDen = new Set();
+            const adjacentToMinDen = getAdjacentCoords(minDen); // Squares right next to opponent den
+            const twoSquaresFromMinDen = new Set(); // Squares 2 steps from opponent den
             adjacentToMinDen.forEach(sq1 => {
                 getAdjacentCoords(sq1).forEach(sq2 => {
                     if (sq2 !== minDen && !adjacentToMinDen.includes(sq2)) {
@@ -4426,11 +4458,30 @@
 
                     // A) Den Proximity Bonus (VERY HIGH)
                     if (adjacentToMinDen.includes(coords)) {
-                        score += AI_DEN_PROXIMITY_BONUS_SQ;
-                        if (isValidMove(coords, minDen, piece, boardState, true).valid && !piece.isHungry) score += AI_WIN_SCORE / 1.5;
+                        score += AI_DEN_PROXIMITY_BONUS_SQ; // Apply base adjacent bonus
+                        // Check if win is possible next turn (move is valid and not hungry)
+                        const canWinNext = isValidMove(coords, minDen, piece, boardState, true).valid && !piece.isHungry; // Simulate check
+                        if (canWinNext) {
+                           const winBonus = AI_WIN_SCORE / 1.5; // Calculate bonus
+                           score += winBonus; // Add massive incentive
+                           // --- Add Logging ---
+                           console.log(`[Eval] Applied Win-Adjacent Bonus (${winBonus.toFixed(0)}) for ${playerForMax} ${piece.rank}@${coords}`);
+                           // --- End Logging ---
+                        }
+                         // --- Add Logging ---
+                          else {
+                             console.log(`[Eval] Applied Den Proximity Bonus SQ (${AI_DEN_PROXIMITY_BONUS_SQ}) for ${playerForMax} ${piece.rank}@${coords} (Cannot win next: ${!isValidMove(coords, minDen, piece, boardState, true).valid ? 'Invalid Move' : ''} ${piece.isHungry ? 'Is Hungry' : ''})`);
+                          }
+                         // --- End Logging ---
+
                     } else if (twoSquaresFromMinDen.has(coords)) {
-                         score += AI_DEN_PROXIMITY_BONUS_2SQ;
+                         score += AI_DEN_PROXIMITY_BONUS_2SQ; // Apply 2-square bonus
+                         // --- Add Logging ---
+                          console.log(`[Eval] Applied Den Proximity Bonus 2SQ (${AI_DEN_PROXIMITY_BONUS_2SQ}) for ${playerForMax} ${piece.rank}@${coords}`);
+                         // --- End Logging ---
                     }
+                    // --- END Den Proximity ---
+
 
                     // B) Advancement & Positional Bonuses (Piece Specific)
                     const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (rc.row) : (ROWS - 1 - rc.row);
@@ -4540,10 +4591,10 @@
                              score += AI_IMMEDIATE_WIN_THREAT_PENALTY; // High actual win threat penalty
                          }
                     }
-                    // Reward AI if opponent piece IS threatened by AI
-                    if (threatenedBy[coords]) {
+                     // Reward AI if opponent piece IS threatened by AI
+                     if (threatenedBy[coords]) {
                          score -= AI_IS_THREATENED_PENALTY; // Add small reward if opponent is threatened
-                    }
+                     }
                 }
             }
 
