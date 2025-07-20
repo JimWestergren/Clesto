@@ -266,7 +266,7 @@ main {
 
 .hungry {
   box-shadow: 0 0 0 4px var(--hungry-outline); /* Red hungry glow */
-  /* animation: hungry-pulse 1.5s infinite ease-in-out; */ /* Optional pulse */
+  animation: hungry-pulse 1.5s infinite ease-in-out; */ /* Optional pulse */
 }
 
 /* ==========================================================================

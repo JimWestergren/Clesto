@@ -311,10 +311,17 @@ const EVAL_MATE_SCORE_THRESHOLD = EVAL_WIN_SCORE / 1.1;
 const EVAL_MATED_SCORE_THRESHOLD = EVAL_LOSE_SCORE / 1.1;
 
 // Evaluation Constants for Hungry State
+/** Penalty multiplier based on the value of the player's own hungry piece. */
+const EVAL_OWN_HUNGRY_VALUE_PENALTY_MULT = 52; // Increase penalty significantly based on value
+/** Bonus multiplier based on the value of the opponent's hungry piece. */
+const EVAL_OPP_HUNGRY_VALUE_BONUS_MULT = 0.25; // Bonus for making opponent pieces hungry (value-based)
+
+
 /** Bonus for making more than one opponent piece hungry. @type {number} */
-const EVAL_MULTI_HUNGRY_BONUS = 150; // Increased
+/* const EVAL_MULTI_HUNGRY_BONUS = 150; // Increased */
 /** Penalty for having only one of your own pieces hungry. @type {number} */
-const EVAL_SINGLE_HUNGRY_PENALTY = -125; // Increased penalty
+/* const EVAL_SINGLE_HUNGRY_PENALTY = -125; // Increased penalty */
+
 
 // --- Search Enhancement Constants ---
 
@@ -352,7 +359,7 @@ const VICTIM_MULTIPLIER = 10;
 
 // --- Clock Constants ---
 /** Initial time allocated to each player in seconds. @type {number} */
-const INITIAL_TIME_SECONDS = 5 * 60; // 5 minutes
+const INITIAL_TIME_SECONDS = 5 * 60; // 10 minutes
 /** Time increment in seconds added to a player's clock after making a move. @type {number} */
 const INCREMENT_SECONDS = 2; // 2 seconds bonus
 

@@ -525,7 +525,23 @@ function isValidMoveBB(fromIndex, toIndex, pieceTypeIndex, player, bitboards) {
         }
 
         if (defenderRank === -1) {
-            console.error(`isValidMoveBB Error: Opponent piece expected at index ${toIndex} but type not found.`);
+            // --- Add Debug Logging ---
+            const opponentBBIndex = opponent === PLAYERS.ORANGE ? BB_IDX.ORANGE_PIECES : BB_IDX.YELLOW_PIECES; // Get index for logging combined board
+            console.error(`isValidMoveBB Error: Opponent piece expected at index ${toIndex} (${bitIndexToCoord(toIndex)}) but type not found.`);
+            console.error(`  Player making move: ${player}, Opponent: ${opponent}`);
+            console.error(`  Checking move from ${bitIndexToCoord(fromIndex)} (${fromIndex}) to ${bitIndexToCoord(toIndex)} (${toIndex})`);
+            console.error(`  Piece type moving: ${pieceTypeIndex} (Rank: ${rank})`);
+            console.error(`  Bitboard Check: getBit(opponentPiecesBB (${opponentBBIndex}), ${toIndex}) is TRUE.`); // opponentPiecesBB already defined
+            console.error(`  Individual Opponent Type Check Results at index ${toIndex}:`);
+            let calculatedOpponentSumBB = BB_EMPTY; // Calculate sum of individual types
+            for (let dbgOppTypeIdx = oppTypeStart; dbgOppTypeIdx <= oppTypeEnd; dbgOppTypeIdx++) {
+                const bitValue = getBit(bitboards[dbgOppTypeIdx], toIndex);
+                if (bitValue !== 0n) calculatedOpponentSumBB = setBit(calculatedOpponentSumBB, toIndex); // Add to sum if found
+                console.error(`    Type ${dbgOppTypeIdx}: getBit -> ${bitValue}`);
+            }
+            console.error(`  Full Opponent Combined Board (${opponentBBIndex}) at index ${toIndex}: getBit -> ${getBit(bitboards[opponentBBIndex], toIndex)}`);
+            console.error(`  Calculated Sum of Opponent Types at index ${toIndex}: getBit -> ${getBit(calculatedOpponentSumBB, toIndex)}`);
+            // --- End Debug Logging ---
             return { valid: false, reason: "Internal error: Cannot identify piece to capture." };
         }
 
@@ -758,6 +774,21 @@ function simulateMoveBB(currentBitboards, currentPlayer, currentHash, move) {
     }
     nextBitboards[movingPieceTypeIndex] = setBit(nextBitboards[movingPieceTypeIndex], toIndex);
     nextBitboards[playerBBIndex] = setBit(nextBitboards[playerBBIndex], toIndex);
+    // --- START: Force Consistency - Rebuild Combined Player Boards ---
+    let rebuiltOrangeBB = BB_EMPTY;
+    for (let typeIdx = O_RAT_IDX; typeIdx <= O_ELEPHANT_IDX; typeIdx++) {
+        rebuiltOrangeBB |= nextBitboards[typeIdx];
+    }
+    nextBitboards[BB_IDX.ORANGE_PIECES] = rebuiltOrangeBB;
+
+    let rebuiltYellowBB = BB_EMPTY;
+    for (let typeIdx = Y_RAT_IDX; typeIdx <= Y_ELEPHANT_IDX; typeIdx++) {
+        rebuiltYellowBB |= nextBitboards[typeIdx];
+    }
+    nextBitboards[BB_IDX.YELLOW_PIECES] = rebuiltYellowBB;
+    // --- END: Force Consistency ---
+
+    // Now recalculate OCCUPIED based on the corrected combined boards
     nextBitboards[BB_IDX.OCCUPIED] = nextBitboards[BB_IDX.ORANGE_PIECES] | nextBitboards[BB_IDX.YELLOW_PIECES];
 
     // --- Update Zobrist Hash ---
@@ -962,9 +993,11 @@ function getFinalHashAfterMoveBB(initialBitboards, playerMoving, initialHash, in
  *
  * @param {string} playerToCalculateFor - The player ('orange' or 'yellow') whose potential hungry pieces to find.
  * @param {bigint[]} currentBitboards - The current bitboard state array.
+ * @param {boolean} [isCalledFromHungerCheck=false] - Internal flag for debugging.
+ * @param {string} [debugTargetCoord=null] - Internal flag for debugging specific piece.
  * @returns {object} A map `{ coords: true }` for each piece that *can* make a valid capture.
  */
-function calculateHungryMap(playerToCalculateFor, currentBitboards) {
+function calculateHungryMap(playerToCalculateFor, currentBitboards, isCalledFromHungerCheck = false, debugTargetCoord = null) {
     const fnName = "calculateHungryMap";
     const hungryMap = {};
     const opponent = playerToCalculateFor === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
@@ -979,10 +1012,20 @@ function calculateHungryMap(playerToCalculateFor, currentBitboards) {
     // Generate all valid moves for the player once (use simulation flag)
     let allPlayerMoves = [];
     try {
+        // Use getAllValidMovesBB - IMPORTANT: Ensure this function does NOT itself call calculateHungryMap to avoid infinite recursion!
+        // We need getAllValidMovesBB to return pseudo-legal moves based on geometry/terrain only for this purpose.
+        // Let's assume getAllValidMovesBB currently returns pseudo-legal moves respecting hungry *rules*
+        // but doesn't *calculate* hunger itself. If it does, this is the recursion point.
+        // For now, we assume it's safe.
         allPlayerMoves = getAllValidMovesBB(currentBitboards, playerToCalculateFor, true);
     } catch (e) {
         console.error(`[${fnName}] Error generating moves for ${playerToCalculateFor}:`, e);
     }
+
+    // --- Debugging ---
+    const isDebugging = isCalledFromHungerCheck && debugTargetCoord;
+    if (isDebugging) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c Player: ${playerToCalculateFor}, Found ${allPlayerMoves.length} total pseudo-moves.`, 'color: green; font-weight: bold;', 'color: inherit;');
+    // ---
 
     // Iterate through each piece type for the player
     const pieceTypeStart = playerToCalculateFor === PLAYERS.ORANGE ? BB_IDX.PIECE_START : Y_RAT_IDX;
@@ -994,34 +1037,103 @@ function calculateHungryMap(playerToCalculateFor, currentBitboards) {
         while (pieceBoard !== BB_EMPTY) {
             const fromIndex = lsbIndex(pieceBoard);
             if (fromIndex === -1) break;
+            const currentCoords = bitIndexToCoord(fromIndex);
+            const isCurrentDebugTarget = (isDebugging && currentCoords === debugTargetCoord);
 
             let canMakeValidCapture = false;
             // Filter pre-generated moves for the current piece
-            const pieceMoves = allPlayerMoves.filter(m => coordToBitIndex(m.from) === fromIndex);
+            const pieceMoves = allPlayerMoves.filter(m => m.from === currentCoords);
+
+            if (isCurrentDebugTarget) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c Found ${pieceMoves.length} pseudo-moves for this piece.`, 'color: green; font-weight: bold;', 'color: inherit;');
 
             for (const move of pieceMoves) {
                 const toIndex = coordToBitIndex(move.to);
 
                 // Is it targeting an opponent piece?
                 if (toIndex !== -1 && getBit(opponentPiecesBB, toIndex) !== 0n) {
+                    if (isCurrentDebugTarget) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c   Move ${move.to} targets opponent. Validating...`, 'color: green; font-weight: bold;', 'color: inherit;');
                     // Is the capture actually valid (rank, traps etc)?
                     const validation = isValidMoveBB(fromIndex, toIndex, pieceTypeIndex, playerToCalculateFor, currentBitboards);
+                    if (isCurrentDebugTarget) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c     isValidMoveBB result: ${validation.valid} (Reason: ${validation.reason})`, 'color: green; font-weight: bold;', 'color: inherit;');
                     if (validation.valid) {
                         canMakeValidCapture = true;
+                        if (isCurrentDebugTarget) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c     VALID CAPTURE FOUND! Piece is hungry.`, 'color: green; font-weight: bold;', 'color: inherit;');
                         break; // Found a valid capture for this piece
                     }
+                } else {
+                     //if (isCurrentDebugTarget) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c   Move ${move.to} does not target opponent.`, 'color: green; font-weight: bold;', 'color: inherit;');
                 }
             }
 
             if (canMakeValidCapture) {
-                const coords = bitIndexToCoord(fromIndex);
-                if (coords) hungryMap[coords] = true;
+                if (currentCoords) hungryMap[currentCoords] = true;
+            } else {
+                 if (isCurrentDebugTarget) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c   NO VALID CAPTURE found for this piece. Not hungry.`, 'color: green; font-weight: bold;', 'color: inherit;');
             }
 
             pieceBoard = clearBit(pieceBoard, fromIndex); // Move to next piece of this type
         }
     }
+     if (isDebugging) console.log(`%c[calculateHungryMap DEBUG for ${debugTargetCoord}]%c Final hungryMap result for piece: ${!!hungryMap[debugTargetCoord]}`, 'color: green; font-weight: bold;', 'color: inherit;');
     return hungryMap;
+}
+
+/**
+ * Checks if a specific piece *would* be hungry after making a specific capture move.
+ * Does NOT modify global state.
+ * Depends on: simulateMoveBB, calculateHungryMap, coordToBitIndex, bitIndexToCoord, getBit.
+ *
+ * @param {number} attackerFromIndex - Index of the attacking piece.
+ * @param {number} attackerToIndex - Index of the square being captured.
+ * @param {number} attackerPieceTypeIndex - Type index of the attacking piece.
+ * @param {string} attackerPlayer - Player making the attack.
+ * @param {bigint[]} currentBitboards - The bitboard state *before* the capture.
+ * @param {bigint} currentHash - The hash *before* the capture.
+ * @returns {boolean} True if the attacker would be hungry after the capture, false otherwise or on simulation error.
+ */
+function checkHungerAfterCapture(attackerFromIndex, attackerToIndex, attackerPieceTypeIndex, attackerPlayer, currentBitboards, currentHash) {
+    const attackerFromCoords = bitIndexToCoord(attackerFromIndex);
+    const attackerToCoords = bitIndexToCoord(attackerToIndex); // Attacker ends up at the 'to' square
+    const attackerRank = (attackerPieceTypeIndex % 8) + 1;
+    const isDebugTarget = (attackerFromCoords === 'a5' && attackerToCoords === 'a6'); // Target the specific Elephant capture
+
+    if (isDebugTarget) console.log(`%c[checkHungerAfterCapture DEBUG]%c Checking ${attackerPlayer} ${attackerRank} ${attackerFromCoords}x${attackerToCoords}`, 'color: blue; font-weight: bold;', 'color: inherit;');
+
+    // Simulate the capture move itself
+    const moveData = {
+        from: attackerFromCoords,
+        to: attackerToCoords,
+        pieceTypeIndex: attackerPieceTypeIndex
+    };
+    // Basic check for valid coords before simulation
+    if (!moveData.from || !moveData.to) {
+        console.error("checkHungerAfterCapture: Invalid coords generated for simulation.", { attackerFromIndex, attackerToIndex });
+        return false;
+    }
+
+    const simResult = simulateMoveBB(currentBitboards, attackerPlayer, currentHash, moveData);
+    if (!simResult) {
+        if (isDebugTarget) console.log(`%c[checkHungerAfterCapture DEBUG]%c Simulation failed!`, 'color: blue; font-weight: bold;', 'color: inherit;');
+        return false;
+    }
+
+    // Get the board state *after* the capture
+    const boardsAfterCapture = simResult.nextBitboards;
+    if (isDebugTarget) console.log(`%c[checkHungerAfterCapture DEBUG]%c Board state after capture: ${getBoardStateStringBB(boardsAfterCapture)}`, 'color: blue; font-weight: bold;', 'color: inherit;');
+
+
+    // Now, calculate the hungry map for the attacker *in the state after the capture*
+    // Pass debug flags to calculateHungryMap
+    const hungryMapAfterCapture = calculateHungryMap(attackerPlayer, boardsAfterCapture, isDebugTarget, attackerToCoords); // Pass true and target coord
+    if (isDebugTarget) console.log(`%c[checkHungerAfterCapture DEBUG]%c Calculated hungry map for ${attackerPlayer} AFTER capture: ${JSON.stringify(hungryMapAfterCapture)}`, 'color: blue; font-weight: bold;', 'color: inherit;');
+
+
+    // Check if the piece at the attacker's *new* location (toIndex) is in the hungry map
+    const attackerFinalCoords = attackerToCoords;
+    const isHungryResult = !!(attackerFinalCoords && hungryMapAfterCapture[attackerFinalCoords]);
+    if (isDebugTarget) console.log(`%c[checkHungerAfterCapture DEBUG]%c Is attacker at final location ${attackerFinalCoords} hungry? ${isHungryResult}`, 'color: blue; font-weight: bold;', 'color: inherit;');
+
+    return isHungryResult;
 }
 
 /**
@@ -1460,11 +1572,13 @@ function checkAndApplyStarvationBB(playerWhoMoved, movedPieceFromCoords, wasAtta
                  }
 
                  if (starvedPieceTypeIndex !== -1) {
+                    // Determine the player whose piece starved based on the type index
+                    const starvedPlayer = starvedPieceTypeIndex < 8 ? PLAYERS.ORANGE : PLAYERS.YELLOW;
+                    const starvedPlayerBBIndex = starvedPlayer === PLAYERS.ORANGE ? BB_IDX.ORANGE_PIECES : BB_IDX.YELLOW_PIECES;
+
                     // Remove from bitboards (modifying the copied array)
-                    modifiedBitboards[starvedPieceTypeIndex] = clearBit(modifiedBitboards[starvedPieceTypeIndex], hungryIndex);
-                    const playerBBIndex = playerWhoMoved === PLAYERS.ORANGE ? BB_IDX.ORANGE_PIECES : BB_IDX.YELLOW_PIECES;
-                    modifiedBitboards[playerBBIndex] = clearBit(modifiedBitboards[playerBBIndex], hungryIndex);
-                    // Occupied board will be fully recalculated later
+                    modifiedBitboards[starvedPieceTypeIndex] = clearBit(modifiedBitboards[starvedPieceTypeIndex], hungryIndex); // Clear specific type board
+                    modifiedBitboards[starvedPlayerBBIndex] = clearBit(modifiedBitboards[starvedPlayerBBIndex], hungryIndex); // Clear correct combined player board
 
                     // Update hash for the removed piece ONLY
                     modifiedHash = togglePieceKeyBB(modifiedHash, starvedPieceTypeIndex, hungryIndex);
