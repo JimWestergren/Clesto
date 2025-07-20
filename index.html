@@ -1452,7 +1452,7 @@
     <script>
     window.addEventListener('load', () => { // Changed from DOMContentLoaded
         // --- Debug Flag ---
-        const debug = true; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
+        const debug = false; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
 
         // --- DOM Element References ---
         const boardElement = document.getElementById('board');
@@ -2600,13 +2600,13 @@
             moveLogElement.scrollTop = moveLogElement.scrollHeight;
         }
 
-         /**
+/**
          * Handles the Undo button click. Reverts the game state. Plays undo sound.
          * - In PvP mode: Undoes the single last move made by either player.
          * - In PvE mode: Undoes the last full turn (AI's move + Player's preceding move).
          * Also handles restoring clocks and playing turn sound.
          */
-        function undoMove() { // Uses playSound helper
+        function undoMove() { // Complete function with restored logic
             if (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW && boardGridWrapper.style.pointerEvents === 'none') {
                 console.log("Cannot undo while AI is thinking.");
                 updateStatus("Cannot undo while AI is thinking.");
@@ -2624,24 +2624,60 @@
 
             playSound(undoSoundElement, "Undo Sound"); // Play undo sound using helper
 
-            pauseAllClocks();
+            pauseAllClocks(); // Stop clocks before state change
             let stateToRestore = null;
-            // ... rest of undo logic remains the same ...
 
+            // --- START: Restore missing undo logic ---
+            if (isPlayerVsPlayerMode) {
+                // --- PvP Logic: Undo 1 move ---
+                console.log("Undoing last PvP move...");
+                stateToRestore = gameHistory.pop(); // Pop the state before the last player's move
+            } else {
+                // --- PvE Logic: Try to undo 2 moves (Player + AI) ---
+                if (gameHistory.length >= 2) {
+                    // We want the state *before* the player's move, which is 2 steps back
+                    console.log("Undoing last full turn (Player + AI)...");
+                    gameHistory.pop(); // Pop and discard the state before the AI's move
+                    stateToRestore = gameHistory.pop(); // Pop and restore the state before the Player's move
+                } else if (gameHistory.length === 1) {
+                    // Fallback: Only player's first move exists in history. Undo just that one.
+                    console.log("Undoing player's first move (only one in history)...");
+                    stateToRestore = gameHistory.pop();
+                }
+            }
+            // --- END: Restore missing undo logic ---
+
+            // --- Check if a state was successfully retrieved to restore ---
+            if (!stateToRestore) {
+                // This case might be hit if history was exactly 1 in PvE and popping failed somehow (unlikely)
+                // Or if history somehow became empty unexpectedly. Safest is to reset.
+                console.error("Undo Error: Could not retrieve a state to restore. History length:", gameHistory.length);
+                initializeGame(); // Reset to initial state as a safe fallback
+                updateStatus("Undo error or history empty. Game reset.");
+                updateUndoButtonState();
+                pauseAllClocks(); // Ensure clocks stopped
+                return;
+            }
+
+            // --- Load the determined state ---
             console.log("Loading restored state...");
-            loadGameState(stateToRestore);
+            loadGameState(stateToRestore); // Now stateToRestore should have the correct data
+
+            // --- Post-load updates ---
             updateStatus(`Undo successful. ${gameState.currentPlayer.toUpperCase()}'s turn.`);
-            updateUndoButtonState();
+            updateUndoButtonState(); // Update button based on new history length
 
             if (!gameState.gameOver) {
                 enablePlayerInteraction();
-                startClock(gameState.currentPlayer);
-                playTurnSound(); // Use the specific function which now uses playSound
+                startClock(gameState.currentPlayer); // Start clock for the player whose turn it now is
+                playTurnSound(); // Play turn sound after undo
             } else {
+                // If undo results in a game-over state, ensure clocks remain paused.
                 pauseAllClocks();
-                disablePlayerInteraction();
+                disablePlayerInteraction(); // Ensure interaction disabled if game over
             }
-            updateAllPieceAccessibility();
+            updateAllPieceAccessibility(); // Ensure accessibility is correct
+
         } // End undoMove
 
         /**
@@ -5715,17 +5751,48 @@
         resetButton.addEventListener('click', () => { handleFirstInteraction(); initializeGame(); }); // Add interaction check
         undoButton.addEventListener('click', () => { handleFirstInteraction(); undoMove(); }); // Add interaction check
 
-        // Add Load State listeners (and interaction check)
+// Add Load State listeners (and interaction check)
         const loadStateButton = document.getElementById('load-state-button');
         const boardStateInput = document.getElementById('board-state-input');
         const loadStatusMessage = document.getElementById('load-status-message');
         if (loadStateButton && boardStateInput && loadStatusMessage) {
             loadStateButton.addEventListener('click', () => {
                 handleFirstInteraction(); // Register interaction
-                // ... rest of load state logic ...
+                // --- START: Restore Load State Logic ---
+                const rawStateString = boardStateInput.value;
+
+                if (!rawStateString || rawStateString.trim() === '') {
+                    loadStatusMessage.textContent = "Please paste a state string first.";
+                    loadStatusMessage.style.color = 'red';
+                    return;
+                }
+
+                const cleanedStateString = rawStateString
+                    .split(',')
+                    .map(piece => piece.trim())
+                    .filter(piece => piece !== '')
+                    .join(',');
+
+                console.log("Raw input:", rawStateString);
+                console.log("Cleaned input for parsing:", cleanedStateString);
+
+                const parsedBoard = parseBoardStateString(cleanedStateString);
+
+                if (parsedBoard) {
+                    initializeGame(parsedBoard, true); // Pass true for isLoadingFromFile
+                    loadStatusMessage.textContent = "Board state loaded successfully!";
+                    loadStatusMessage.style.color = '#28a745';
+                    boardStateInput.value = '';
+                } else {
+                    loadStatusMessage.textContent = "Invalid state string format. Please check console for details.";
+                    loadStatusMessage.style.color = 'red';
+                    boardStateInput.style.borderColor = 'red';
+                    setTimeout(() => { boardStateInput.style.borderColor = 'var(--medium-gray)'; }, 2000);
+                }
+                // --- END: Restore Load State Logic ---
             });
-            boardStateInput.addEventListener('focus', () => { isLoadStateInputFocused = true; });
-            boardStateInput.addEventListener('blur', () => { isLoadStateInputFocused = false; });
+            boardStateInput.addEventListener('focus', () => { isLoadStateInputFocused = true; console.log("Load state input focused, game keyboard shortcuts disabled."); }); // Keep focus handlers
+            boardStateInput.addEventListener('blur', () => { isLoadStateInputFocused = false; console.log("Load state input blurred, game keyboard shortcuts enabled."); }); // Keep focus handlers
         } else {
              console.error("Could not find Load State button, input field, or status message element.");
         }
@@ -5736,7 +5803,25 @@
         if (rulesButton && rulesContent) {
             rulesButton.addEventListener('click', () => {
                  handleFirstInteraction(); // Register interaction
-                // ... rest of accordion logic ...
+                 // --- START: Restore Accordion Logic ---
+                 const isExpanded = rulesButton.getAttribute('aria-expanded') === 'true';
+
+                 rulesButton.setAttribute('aria-expanded', !isExpanded);
+                 rulesContent.setAttribute('aria-hidden', isExpanded);
+
+                 rulesButton.classList.toggle('active');
+                 rulesContent.classList.toggle('expanded');
+
+                 if (!isExpanded) {
+                     rulesContent.style.maxHeight = rulesContent.scrollHeight + 'px';
+                     const buttonTextSpan = rulesButton.querySelector('.rules-button-text');
+                     if(buttonTextSpan) buttonTextSpan.textContent = 'Hide Game Rules';
+                 } else {
+                     rulesContent.style.maxHeight = null;
+                     const buttonTextSpan = rulesButton.querySelector('.rules-button-text');
+                     if(buttonTextSpan) buttonTextSpan.textContent = 'Show Game Rules';
+                 }
+                 // --- END: Restore Accordion Logic ---
             });
         } else {
             console.warn("Rules accordion button or content not found.");
@@ -5747,7 +5832,39 @@
         if (pvpToggleButton) {
             pvpToggleButton.addEventListener('change', (event) => {
                 handleFirstInteraction(); // Register interaction
-                // ... rest of pvp toggle logic ...
+                // --- START: Restore PvP Toggle Logic ---
+                isPlayerVsPlayerMode = event.target.checked;
+                console.log(`Player vs Player mode ${isPlayerVsPlayerMode ? 'ENABLED' : 'DISABLED'}`);
+                if (aiMoveTimeoutId) { clearTimeout(aiMoveTimeoutId); aiMoveTimeoutId = null; }
+
+                pauseAllClocks(); // Pause during switch
+
+                if (isPlayerVsPlayerMode) {
+                    console.log("PvP Mode ACTIVE: Ensuring player interaction is enabled.");
+                    enablePlayerInteraction();
+                    updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn (PvP Mode)`);
+                    resumeClockForCurrentPlayer();
+                    playTurnSound();
+                } else {
+                    // Switching TO PvE
+                    if (gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
+                        console.log("PvE Mode ACTIVE and Yellow's turn: Disabling interaction, scheduling AI move.");
+                        disablePlayerInteraction();
+                        undoButton.disabled = true;
+                        startClock(PLAYERS.YELLOW);
+                        playTurnSound();
+                        aiMoveTimeoutId = setTimeout(triggerAIMove, 500); // Using 0.5 sec delay
+                    } else {
+                        console.log("PvE Mode ACTIVE and Orange's turn: Ensuring player interaction is enabled.");
+                        enablePlayerInteraction();
+                        resumeClockForCurrentPlayer();
+                        playTurnSound();
+                    }
+                }
+
+                updateAllPieceAccessibility();
+                updateUndoButtonState();
+                 // --- END: Restore PvP Toggle Logic ---
             });
         } else {
             console.warn("PvP toggle button not found.");
