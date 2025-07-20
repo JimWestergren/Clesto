@@ -4157,6 +4157,7 @@
         /**
          * The recursive Minimax function with Alpha-Beta Pruning.
          * Explores the game tree to a specified depth, evaluating board states.
+         * Prioritizes near-winning moves in maximization. // <-- Updated comment
          * @param {number} depth - Remaining depth to search.
          * @param {object} nodeGameState - The game state at the current node in the search tree.
          * @param {boolean} isMaximizingPlayer - True if the current node is for the AI (maximizing), false for the opponent (minimizing).
@@ -4168,24 +4169,25 @@
         function minimax(depth, nodeGameState, isMaximizingPlayer, alpha, beta, playerForMax) {
             // --- Base Cases for Recursion ---
             if (depth === 0 || nodeGameState.gameOver) {
-                const baseScore = evaluateBoard(nodeGameState.board, playerForMax); // Pass board only
-                if (baseScore > 5000) return baseScore + depth;
-                if (baseScore < -5000) return baseScore - depth;
+                // Pass playerForMax to evaluateBoard, not the node's currentPlayer
+                const baseScore = evaluateBoard(nodeGameState.board, playerForMax);
+                // Add depth bonus/penalty for faster wins/slower losses
+                if (baseScore >= AI_WIN_SCORE / 1.1) return baseScore + depth; // Use threshold slightly below WIN_SCORE
+                if (baseScore <= AI_LOSE_SCORE / 1.1) return baseScore - depth; // Use threshold slightly above LOSE_SCORE
                 return baseScore;
             }
 
             // Get possible moves from the current node state, flagging as simulation
-            const possibleMoves = getAllValidMoves(nodeGameState.board, nodeGameState.currentPlayer, true); // Pass true for isSimulation
+            const possibleMoves = getAllValidMoves(nodeGameState.board, nodeGameState.currentPlayer, true);
 
             // No moves possible (Stalemate/Loss in simulation)
             if (possibleMoves.length === 0) {
                  // If maximizing player (AI) has no moves -> loss
                  // If minimizing player (Human) has no moves -> win
-                return isMaximizingPlayer ? (-10000 - depth) : (10000 + depth);
+                return isMaximizingPlayer ? (AI_LOSE_SCORE - depth) : (AI_WIN_SCORE + depth); // Add depth penalty/bonus to loss/win
             }
 
             // --- Handle Hungry Pieces Obligation (within simulation) ---
-            // Use the nodeGameState.board which has hungry status calculated by simulateMove
             const hungryMoves = possibleMoves.filter(move => nodeGameState.board[move.from]?.isHungry);
             let movesToConsider = possibleMoves;
             if (hungryMoves.length > 0) {
@@ -4200,35 +4202,75 @@
             // --- Recursive Exploration ---
             if (isMaximizingPlayer) { // AI's turn (maximize score)
                 let maxEval = -Infinity;
+
+                // --- Priority Check for Near-Win States (Fix for Task 39) ---
+                // Check if any immediate move leads to a state evaluated as near-winning
+                // This helps prevent pruning potentially winning lines early.
                 for (const move of movesToConsider) {
-                    // simulateMove handles board changes and next turn's hungry status
                     const nextState = simulateMove(nodeGameState, move);
-                    // Recursive call for the minimizing player's turn
+                    // Evaluate the immediate result of this move
+                    const immediateEval = evaluateBoard(nextState.board, playerForMax);
+                    if (immediateEval >= AI_WIN_SCORE / 1.5) { // If this move leads to near-win state
+                        // Directly consider this high score, potentially updating maxEval early
+                        // We still need minimax to look deeper, but ensure this value is considered
+                        maxEval = Math.max(maxEval, immediateEval + depth); // Add depth bonus as it's a quick path
+                        alpha = Math.max(alpha, maxEval);
+                        // Don't break here, let minimax explore, but we've 'seeded' a high potential score
+                    }
+                     if (beta <= alpha) break; // Standard pruning can still occur if opponent has better option earlier
+                }
+                // --- End Priority Check ---
+
+
+                // --- Standard Minimax Loop ---
+                for (const move of movesToConsider) {
+                    const nextState = simulateMove(nodeGameState, move);
                     const evaluation = minimax(depth - 1, nextState, false, alpha, beta, playerForMax);
-                    maxEval = Math.max(maxEval, evaluation); // Update max score found
-                    alpha = Math.max(alpha, evaluation); // Update alpha (best for maximizer)
+                    maxEval = Math.max(maxEval, evaluation);
+                    alpha = Math.max(alpha, evaluation);
                     if (beta <= alpha) {
                         break; // Beta cutoff
                     }
                 }
+
+                 // Fallback check remains the same
                  if (maxEval === -Infinity && possibleMoves.length > 0 && movesToConsider.length < possibleMoves.length) {
                       const nonHungryMove = possibleMoves.find(m => !movesToConsider.some(consMove => consMove.from === m.from && consMove.to === m.to)) || possibleMoves[0];
                       const fallbackState = simulateMove(nodeGameState, nonHungryMove);
+                      // Return the result of exploring the fallback, don't just evaluate statically
                       return minimax(depth -1, fallbackState, false, alpha, beta, playerForMax);
                  }
                 return maxEval;
+
             } else { // Opponent's turn (minimize score)
                 let minEval = Infinity;
+
+                 // --- Check for near-loss states (Opponent close to winning) ---
+                 // Helps guide the AI away from allowing the opponent to get too close
+                 for (const move of movesToConsider) {
+                    const nextState = simulateMove(nodeGameState, move);
+                    const immediateEval = evaluateBoard(nextState.board, playerForMax); // Evaluate from AI perspective
+                    if (immediateEval <= AI_LOSE_SCORE / 1.5) { // If opponent's move leads to AI near-loss
+                         minEval = Math.min(minEval, immediateEval - depth); // Factor in depth penalty
+                         beta = Math.min(beta, minEval);
+                     }
+                     if (beta <= alpha) break; // Alpha cutoff
+                 }
+                 // --- End Near-Loss Check ---
+
+
+                // --- Standard Minimax Loop ---
                 for (const move of movesToConsider) {
-                    const nextState = simulateMove(nodeGameState, move); // Simulate the move
-                    // Recursive call for the maximizing player's turn
+                    const nextState = simulateMove(nodeGameState, move);
                     const evaluation = minimax(depth - 1, nextState, true, alpha, beta, playerForMax);
-                    minEval = Math.min(minEval, evaluation); // Update min score found
-                    beta = Math.min(beta, evaluation); // Update beta (best for minimizer)
+                    minEval = Math.min(minEval, evaluation);
+                    beta = Math.min(beta, evaluation);
                     if (beta <= alpha) {
                         break; // Alpha cutoff
                     }
                 }
+
+                 // Fallback check remains the same
                  if (minEval === Infinity && possibleMoves.length > 0 && movesToConsider.length < possibleMoves.length) {
                      const nonHungryMove = possibleMoves.find(m => !movesToConsider.some(consMove => consMove.from === m.from && consMove.to === m.to)) || possibleMoves[0];
                      const fallbackState = simulateMove(nodeGameState, nonHungryMove);
@@ -4471,13 +4513,13 @@
                          // --- Add Logging ---
                           else {
                              console.log(`[Eval] Applied Den Proximity Bonus SQ (${AI_DEN_PROXIMITY_BONUS_SQ}) for ${playerForMax} ${piece.rank}@${coords} (Cannot win next: ${!isValidMove(coords, minDen, piece, boardState, true).valid ? 'Invalid Move' : ''} ${piece.isHungry ? 'Is Hungry' : ''})`);
-                          }
+                        }
                          // --- End Logging ---
 
                     } else if (twoSquaresFromMinDen.has(coords)) {
                          score += AI_DEN_PROXIMITY_BONUS_2SQ; // Apply 2-square bonus
                          // --- Add Logging ---
-                          console.log(`[Eval] Applied Den Proximity Bonus 2SQ (${AI_DEN_PROXIMITY_BONUS_2SQ}) for ${playerForMax} ${piece.rank}@${coords}`);
+                        console.log(`[Eval] Applied Den Proximity Bonus 2SQ (${AI_DEN_PROXIMITY_BONUS_2SQ}) for ${playerForMax} ${piece.rank}@${coords}`);
                          // --- End Logging ---
                     }
                     // --- END Den Proximity ---
