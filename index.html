@@ -55,7 +55,7 @@
             --focus-outline: 2px solid #007bff;
 
             /* Layout Dimensions (Keep As Is) */
-            --board-max-width: 550px;
+            --board-max-width: 650px;
             --ui-max-width: 300px;
         }
 
@@ -117,7 +117,7 @@
             outline: none;
             /* For custom focus */
             box-sizing: border-box;
-            padding: 22px;
+            padding: 26px;
             /* Adjust padding to align grid with background */
             overflow: hidden;
             /* Clip any potential overflow */
@@ -1497,7 +1497,7 @@
     <script>
     window.addEventListener('load', () => { // Changed from DOMContentLoaded
         // --- Debug Flag ---
-        const debug = true; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
+        const debug = false; // SET TO true TO SHOW DEBUG PANEL, false TO HIDE
 
         // --- DOM Element References ---
         const boardElement = document.getElementById('board');
@@ -1959,9 +1959,9 @@
             orange: 'd1', // Orange's Den
             yellow: 'd9' // Yellow's Den
         };
-        const MINIMAX_DEPTH = 10; // Depth for AI search (higher = stronger but slower)
+        const MINIMAX_DEPTH = 15; // Depth for AI search (higher = stronger but slower)
         const MAX_SEARCH_DEPTH = MINIMAX_DEPTH; // Max depth for main search
-        const MAX_QUIESCENCE_DEPTH = 4; // How deep qsearch can go beyond main depth
+        const MAX_QUIESCENCE_DEPTH = 8; // How deep qsearch can go beyond main depth
         // Time Management Constants
         const TIME_USAGE_FACTOR = 1 / 20; // Use roughly 1/20th of remaining time per move
         const MIN_TIME_PER_MOVE = 1000;  // Minimum milliseconds AI will spend (if time allows)
@@ -1972,59 +1972,139 @@
         // AI Evaluation Constants (Consolidated & Rescaled)
         // ==============================================
 
+/*
         // --- Core Scores ---
-        const AI_WIN_SCORE = 10000; // Keep large for definitive win/loss
-        const AI_LOSE_SCORE = -10000;
+        const AI_WIN_SCORE = 15000; // Keep large for definitive win/loss
+        const EVAL_LOSE_SCORE = -15000;
+
+        // Null Move Pruning constants
+        const NMP_REDUCTION = 3;       // How much to reduce depth for the null move search
+        const NMP_MIN_DEPTH = 3;       // Minimum remaining depth to consider null move pruning
+
+        // Late Move Reductions (LMR) constants
+        const LMR_MIN_DEPTH = 3;       // Minimum depth to apply LMR
+        const LMR_MOVE_COUNT_THRESHOLD = 4; // Apply LMR after this many moves have been searched at a node
+        const LMR_BASE_REDUCTION = 1;  // Base depth reduction for LMR
+
+        // Futility Pruning (FP) constants
+        const FP_MAX_DEPTH = 2;        // Maximum *remaining* depth at which to apply futility pruning
+        const FP_MARGIN_PER_DEPTH = 4; // Margin added to static eval (scaled by depth). Should relate to piece values. Use a value like a mid-range piece.
 
         // --- Mate Score Adjustments (Derived from Core Scores) ---
         // These remain relative to the large win/loss scores
         const MATE_SCORE_THRESHOLD = AI_WIN_SCORE / 1.1;
-        const MATED_SCORE_THRESHOLD = AI_LOSE_SCORE / 1.1;
+        const MATED_SCORE_THRESHOLD = EVAL_LOSE_SCORE / 1.1;
 
         // --- Material ---
-        const AI_MATERIAL_MULT = 1.0; // Multiplier remains 1
-        // *** NEW RESCALED PIECE VALUES ***
-        const AI_PIECE_VALUES = { 1: 3, 2: 1, 3: 3, 4: 2, 5: 4, 6: 6, 7: 9, 8: 7 };
+        const AI_MATERIAL_MULT = 1.2; // Keep slightly higher material weight
+        const EVAL_PIECE_VALUES = { 1: 30, 2: 10, 3: 30, 4: 20, 5: 40, 6: 60, 7: 90, 8: 70 };
 
-        // --- Mobility (Scaled down significantly) ---
-        const AI_MOBILITY_BONUS = 0.1; // Small bonus per move
-        const AI_OPP_MOBILITY_PENALTY = 0.1; // Small penalty per opponent move
+        // --- Mobility (Keep low) ---
+        const 0 = 0.1;
+        const AI_OPP_MOBILITY_PENALTY = 0.1;
 
-        // --- Positional Factors (Scaled down) ---
-        const AI_ADVANCE_ROW_BONUS = 0.4; // Smaller bonus per row advanced
-        const AI_RIVER_CROSS_BONUS = 3;   // Smaller bonus for crossing river
-        const AI_CENTER_COL_BONUS = 0.5;  // Small bonus for center columns
-        const AI_CENTER_CONTROL_BONUS = 1; // Small additional bonus for center past river
-        const AI_WATER_CONTROL_BONUS = 2.5; // Scaled bonus for Rat/Dog on water
+        // --- Positional Factors (Drastically Reduced) ---
+        const AI_ADVANCE_ROW_BONUS = 0.1; // Very small row bonus
+        const AI_RIVER_CROSS_BONUS = 0.5; // Minimal river bonus
+        const AI_CENTER_COL_BONUS = 0.1;  // Minimal center bonus
+        const AI_CENTER_CONTROL_BONUS = 0.2; // Minimal center control bonus
+        const AI_WATER_CONTROL_BONUS = 1.0; // Keep water control slightly relevant
 
-        // --- Den Proximity & Threats (Scaled down, but keep relative impact high) ---
-        const AI_DEN_PROXIMITY_BONUS_1 = 60;  // Significant bonus for adjacent to den
-        const AI_DEN_PROXIMITY_BONUS_2 = 25;  // Moderate bonus for 2 steps away
-        // Keep win/loss adjacent bonuses relative to the main win/loss scores
+        // --- Den Proximity & Threats (Keep _1 high, reduce _2, keep win/loss threats high) ---
+        const AI_DEN_PROXIMITY_BONUS_1 = 20;  // Keep high bonus for adjacent
+        const AI_DEN_PROXIMITY_BONUS_2 = 10;  // Reduce bonus for 2 steps away
         const AI_WIN_ADJACENT_BONUS = AI_WIN_SCORE * 0.8;
-        const AI_OWN_DEN_NEAR_PENALTY = -5;   // Scaled penalty for opponent near own den
+        const AI_OWN_DEN_NEAR_PENALTY = -5;   // Keep penalty for opponent near own den
         const AI_IMMEDIATE_WIN_THREAT_PENALTY = -AI_WIN_SCORE * 0.9;
 
-        // --- Trap Interaction (Scaled down) ---
-        const AI_TRAP_DANGER_PENALTY = -25;     // Scaled base penalty for AI on own trap
-        const AI_GUARDED_TRAP_MULT = 2.0;       // Multiplier remains the same
-        const AI_NEAR_OPP_TRAP_BONUS = 1.5;     // Scaled bonus for AI near opponent trap
+        // --- Trap Interaction (Keep significant penalties) ---
+        // Massive penalty if AI piece is ON an opponent trap AND IMMEDIATELY capturable due to trap effect
+        const EVAL_IMMEDIATE_TRAP_DOOM_PENALTY = -14000; // Should be very close to EVAL_LOSE_SCORE
+        // Small bonus if AI piece is ON an opponent trap but NOT immediately capturable (potential strategic value)
+        const EVAL_SAFE_ON_TRAP_BONUS = 5; // Small positive value
+        // const AI_TRAP_DANGER_PENALTY = -150;
+        const AI_GUARDED_TRAP_MULT = 4.0;
+        const AI_NEAR_OPP_TRAP_BONUS = 2.0; // Reduce offensive trap bonus slightly
 
-        // --- Piece Safety & Threats (Scaled down) ---
-        const AI_PIECE_THREATENED_PENALTY_MULT = 0.5; // Multiplier applied to *new* piece value
-        const AI_THREATENING_BONUS = 4;           // Scaled bonus for threatening an opponent piece
-        const AI_THREATENED_OPP_BONUS_MULT = 0.4;   // Multiplier applied to *new* piece value
+        // --- Piece Safety & Threats ---
+        // Add a flat penalty for pieces attackable by lower/equal ranked enemies
+        const AI_HANGING_PIECE_PENALTY = -20; // Significant flat penalty (adjust as needed)
+        const AI_PIECE_THREATENED_PENALTY_MULT = 7.5; // Keep high penalty multiplier for threats by *any* piece
+        const AI_THREATENING_BONUS = 2.0; // Slightly lower threatening bonus
+        const AI_THREATENED_OPP_BONUS_MULT = 0.4;
 
-        // --- Specific Piece Roles / Hunger (Scaled down) ---
-        const AI_HUNGER_PENALTY = -6;             // Scaled penalty per hungry AI piece
-        const AI_WOLF_CAT_DEFENSE_BONUS = 1;      // Scaled bonus for defensive Wolf/Cat
-        const AI_WOLF_CAT_ADVANCE_PENALTY = -0.3; // Scaled penalty *per row* advanced for Wolf/Cat
-        const AI_BLOCKING_JUMPER_PENALTY = -15;   // Scaled penalty for blocking friendly jumpers
+        // --- Specific Piece Roles / Hunger (Keep penalties) ---
+        const AI_HUNGER_PENALTY = -6;
+        const AI_WOLF_CAT_DEFENSE_BONUS = 1;
+        const AI_WOLF_CAT_ADVANCE_PENALTY = -0.3;
+        const AI_BLOCKING_JUMPER_PENALTY = -15;
 
-        // --- Move Ordering Bonuses (Adjusted to fit new eval scale) ---
-        // These don't need strict scaling, just logical placement relative to eval scores
-        const AI_KILLER_MOVE_BONUS = 50; // Keep reasonably high to prioritize over history/quiet
-        const AI_HISTORY_MAX = 1000;     // Cap for history scores (can be lower if needed)
+        // --- Move Ordering Bonuses ---
+        const AI_KILLER_MOVE_BONUS = 50;
+        const AI_HISTORY_MAX = 1000;
+
+*/
+
+        // --- NEW Simplified Evaluation Constants ---
+        const EVAL_WIN_SCORE = 150000; // Make win/loss scores very dominant
+        const EVAL_LOSE_SCORE = -150000;
+
+        const EVAL_MATERIAL_MULT = 1.0; // Weight for material difference
+        // Slightly adjust piece values? Maybe make Lion more valuable relative to Elephant?
+        const EVAL_PIECE_VALUES = { 1: 30, 2: 10, 3: 30, 4: 20, 5: 40, 6: 60, 7: 500, 8: 70 }; // Keep Lion high!
+
+        // CRITICAL: Penalty for being on an opponent trap AND immediately capturable by a weaker piece
+        const EVAL_IMMEDIATE_TRAP_DOOM_PENALTY = -130000; // Almost as bad as losing
+
+        // *** INCREASED & ADDED CONSTANTS START ***
+        // Den Proximity (Base values, will be scaled)
+        const EVAL_DEN_ADJACENT_BASE_BONUS = 500;  // Base bonus for being 1 step from opponent den
+        const EVAL_DEN_NEAR_BASE_BONUS = 250;    // Base bonus for being 2 steps from opponent den
+        const EVAL_OPP_DEN_ADJACENT_BASE_PENALTY = -500; // Base penalty for opponent 1 step from our den
+        const EVAL_OPP_DEN_NEAR_BASE_PENALTY = -250;   // Base penalty for opponent 2 steps from our den
+        const DEN_PROXIMITY_RANK_SCALE_FACTOR = 0.5; // How much rank scales the bonus (e.g., 1.0 = fully scales, 0.5 = scales less)
+
+        const QSEARCH_LION_ADJACENT_DEN_BONUS = 2000; // Keep specific QSearch bonus high
+        const QSEARCH_LION_NEAR_DEN_BONUS = 1000;   // Keep specific QSearch bonus high
+
+        // Threat Multipliers (Significantly Increased)
+        const EVAL_THREATENING_BONUS_MULT = 1.5;  // Bonus multiplier (victim value) for threatening opponent
+        const EVAL_THREATENED_PENALTY_MULT = 1.8; // Penalty multiplier (threatened piece value) if attacked by L/E rank
+
+        // Positional Bonuses (Keep small)
+        const EVAL_ADVANCE_BONUS = 0.1; // Tiny bonus for crossing midline
+        const EVAL_CENTER_BONUS = 0.1;  // Tiny bonus for center columns (c,d,e)
+
+        // Mobility Weight (NEW)
+        const EVAL_MOBILITY_WEIGHT = 1.0; // Weight for difference in number of legal moves (e.g., 0.5 to 2.0)
+        // *** INCREASED & ADDED CONSTANTS END ***
+
+        // --- Mate Score Adjustments (Derived from Core Scores) ---
+        const EVAL_MATE_SCORE_THRESHOLD = EVAL_WIN_SCORE / 1.1;
+        const EVAL_MATED_SCORE_THRESHOLD = EVAL_LOSE_SCORE / 1.1;
+
+        // --- Search Enhancement Constants (Add these or ensure they exist) ---
+
+        // Null Move Pruning constants
+        const NMP_REDUCTION = 3;       // How much to reduce depth for the null move search
+        const NMP_MIN_DEPTH = 3;       // Minimum remaining depth to consider null move pruning
+
+        // Late Move Reductions (LMR) constants
+        const LMR_MIN_DEPTH = 3;       // Minimum depth to apply LMR
+        const LMR_MOVE_COUNT_THRESHOLD = 4; // Apply LMR after this many moves have been searched at a node
+        const LMR_BASE_REDUCTION = 1;  // Base depth reduction for LMR
+
+        // Futility Pruning (FP) constants
+        const FP_MAX_DEPTH = 2;        // Maximum *remaining* depth at which to apply futility pruning
+        const FP_MARGIN_PER_DEPTH = 40; // Margin added to static eval (scaled by depth). Maybe start higher if piece values are larger. Use a value like a mid-range piece (e.g., Leopard value). // Increased this margin a bit
+
+        // Move Ordering Bonuses
+        const KILLER_MOVE_BONUS = 7500; // Assign a score for killer moves (adjust as needed)
+        const HISTORY_MAX = 10000;      // Max value for history heuristic scores
+
+        // Inside getMvvLvaScore function or globally:
+        const MVV_LVA_BASE_SCORE = 10000;
+        const VICTIM_MULTIPLIER = 10;
 
         // --- Game State Variables ---
         let gameState = {}; // Holds current board, player, turn, etc.
@@ -2032,6 +2112,9 @@
         let zobristKeys = {}; // To store Zobrist keys
         let transpositionTable = new Map(); // Transposition Table
         let killerMoves = [];
+
+        let enableTracing = false; // Global flag to control detailed tracing
+        const TRACE_MOVE = { from: 'c2', to: 'd2' }; // Define the move to trace
 
         // Stores history scores [pieceTypeIndex][toSquareIndex] -> score
         // Size initialized in initializeAISearchState
@@ -3004,22 +3087,29 @@
         /**
          * Creates a deep copy of the current game state (including Zobrist hash)
          * and pushes it onto the history stack for undo functionality.
+         * Uses efficient cloning for board, move history (now a Map), and player last moves.
          */
         function saveGameState() {
+            // Deep copy moveHistory Map: iterate entries, spread value objects
+            const moveHistoryCopy = new Map(
+                Array.from(gameState.moveHistory.entries()).map(([turn, entry]) => [turn, { ...entry }])
+            );
+
+            // Deep copy playerLastMoves
+            const playerLastMovesCopy = {
+                [PLAYERS.ORANGE]: { ...(gameState.playerLastMoves ? gameState.playerLastMoves[PLAYERS.ORANGE] : { from: null, to: null }) },
+                [PLAYERS.YELLOW]: { ...(gameState.playerLastMoves ? gameState.playerLastMoves[PLAYERS.YELLOW] : { from: null, to: null }) }
+            };
+
             const stateToSave = {
-                // Use efficient clone for board, but keep JSON for history arrays etc.
-                board: cloneBoard(gameState.board), // Efficient clone for board state is okay here
+                board: cloneBoard(gameState.board), // Efficient clone for board state
                 currentPlayer: gameState.currentPlayer,
                 turnNumber: gameState.turnNumber,
-                moveHistory: JSON.parse(JSON.stringify(gameState.moveHistory)),
-                // IMPORTANT: boardStateHistory is NOT saved/restored directly.
-                // It reflects the state counts *up to* the point of saving.
-                // Repetition checks rely on the hash *after* loading.
-                // If you NEEDED to restore the exact counts (e.g., for debugging),
-                // you would JSON stringify/parse it, but beware BigInt serialization.
+                moveHistory: moveHistoryCopy, // Store the efficiently copied Map
+                // boardStateHistory is NOT saved/restored directly.
                 gameOver: gameState.gameOver,
                 winner: gameState.winner,
-                playerLastMoves: JSON.parse(JSON.stringify(playerLastMoves)),
+                playerLastMoves: playerLastMovesCopy, // Store the efficiently copied object
                 orangeTime: orangeTime,
                 yellowTime: yellowTime,
                 zobristHash: gameState.zobristHash // Save the hash
@@ -3031,7 +3121,9 @@
 
         /**
          * Restores the game state to a previous state from the history,
-         * including the Zobrist hash.
+         * including the Zobrist hash. Uses efficient cloning methods.
+         * Handles the restoration of moveHistory as a Map.
+         * Corrects the nullish coalescing operator for clock times.
          * @param {object} stateToLoad - The game state object retrieved from `gameHistory`.
          */
         function loadGameState(stateToLoad) {
@@ -3045,25 +3137,52 @@
             gameState.board = cloneBoard(stateToLoad.board); // Use efficient clone
             gameState.currentPlayer = stateToLoad.currentPlayer;
             gameState.turnNumber = stateToLoad.turnNumber;
-            gameState.moveHistory = JSON.parse(JSON.stringify(stateToLoad.moveHistory)); // Keep full copy for log
+
+            // Restore moveHistory Map with deep copied values
+            if (stateToLoad.moveHistory instanceof Map) {
+                gameState.moveHistory = new Map(
+                    Array.from(stateToLoad.moveHistory.entries()).map(([turn, entry]) => [turn, { ...entry }])
+                );
+            } else {
+                // Fallback/Error handling if saved state is unexpectedly not a Map
+                console.error("LoadGameState Error: stateToLoad.moveHistory is not a Map. Resetting history.");
+                gameState.moveHistory = new Map();
+            }
+
             // Do NOT restore boardStateHistory - it's derived live
             gameState.boardStateHistory = {}; // Reset history counts on load
-            // Recalculate history up to this point IF NEEDED (complex, usually not required for standard repetition)
-            // For now, assume repetition check works going forward from loaded state.
+            // Repetition check works going forward from loaded state.
+
             gameState.gameOver = stateToLoad.gameOver;
             gameState.winner = stateToLoad.winner;
             gameState.zobristHash = stateToLoad.zobristHash; // Restore the hash
-            playerLastMoves = JSON.parse(JSON.stringify(stateToLoad.playerLastMoves)); // Keep full copy
+
+            // Restore playerLastMoves with deep copy
+            if (stateToLoad.playerLastMoves) {
+                playerLastMoves = {
+                    [PLAYERS.ORANGE]: { ...(stateToLoad.playerLastMoves[PLAYERS.ORANGE] || { from: null, to: null }) },
+                    [PLAYERS.YELLOW]: { ...(stateToLoad.playerLastMoves[PLAYERS.YELLOW] || { from: null, to: null }) }
+                };
+            } else {
+                // Fallback if missing in saved state
+                playerLastMoves = {
+                    [PLAYERS.ORANGE]: { from: null, to: null },
+                    [PLAYERS.YELLOW]: { from: null, to: null }
+                };
+            }
+
 
             // --- Restore Clock Times ---
+            // *** CORRECTED Nullish Coalescing Operator below ***
             orangeTime = stateToLoad.orangeTime ?? INITIAL_TIME_SECONDS; // Use default if missing
             yellowTime = stateToLoad.yellowTime ?? INITIAL_TIME_SECONDS; // Use default if missing
+
             // --- Update Clock Displays ---
             updateClockDisplay(PLAYERS.ORANGE, orangeTime);
             updateClockDisplay(PLAYERS.YELLOW, yellowTime);
 
             placePieces();
-            rebuildMoveLog();
+            rebuildMoveLog(); // Rebuilds log based on the restored gameState.moveHistory Map
             highlightLastMoves();
             updateUI();
             logBoardState(true); // Log loaded state without incrementing count
@@ -3080,19 +3199,25 @@
             clearHighlights(); // General selection highlights
             selectedPieceCoords = null;
             console.log(`Game state loaded. Hash: ${gameState.zobristHash}`);
-            // Clocks are NOT started here; the function calling loadGameState (e.g., undoMove) will resume them.
+            // Clocks are NOT started here; the function calling loadGameState will resume them.
         }
 
         /**
-         * Clears and rebuilds the visual move log based on the `gameState.moveHistory`.
-         * Necessary after loading a previous game state.
+         * Clears and rebuilds the visual move log based on the `gameState.moveHistory` Map.
+         * Necessary after loading a previous game state. Iterates over Map values, sorted by turn number.
          */
         function rebuildMoveLog() {
             moveLogElement.innerHTML = ''; // Clear the current log display
-            // Add each entry from the history back to the DOM
-            gameState.moveHistory.forEach(entry => {
+
+            // Get entries from the Map, convert to array, sort by turn number
+            const sortedEntries = Array.from(gameState.moveHistory.values())
+                .sort((a, b) => a.turn - b.turn);
+
+            // Add each entry from the sorted array back to the DOM
+            sortedEntries.forEach(entry => {
                 addLogEntryToDOM(entry.turn, entry.orange, entry.yellow);
             });
+
             // Scroll to the bottom of the log
             moveLogElement.scrollTop = moveLogElement.scrollHeight;
         }
@@ -3185,11 +3310,13 @@
          * Sets up the initial game state, creates the board, places pieces, initializes Zobrist hashing,
          * computes the initial hash, clears the Transposition Table, and updates the UI.
          * Accepts an optional custom board state object to load from.
+         * Initializes gameState.moveHistory as a Map.
+         * Corrects the BigInt literal syntax for zobristHash.
          * @param {object|null} [customBoard=null] - A board object ({ coords: pieceData }) to load instead of INITIAL_SETUP.
          * @param {boolean} [isLoadingFromFile=false] - Flag to indicate if loading from a state string input.
          */
         function initializeGame(customBoard = null, isLoadingFromFile = false) {
-             console.log("Initializing game..." + (customBoard ? " with custom state." : ""));
+            console.log("Initializing game..." + (customBoard ? " with custom state." : ""));
 
             // --- Clear Transposition Table ---
             transpositionTable.clear();
@@ -3205,25 +3332,35 @@
                 board: customBoard ? cloneBoard(customBoard) : cloneBoard(INITIAL_SETUP), // Clone board efficiently
                 currentPlayer: PLAYERS.ORANGE,
                 turnNumber: 1,
-                moveHistory: [],
+                moveHistory: new Map(), // Initialize as a Map
                 boardStateHistory: {}, // Use Zobrist hash (BigInt) as key
                 gameOver: false,
                 winner: null,
+                // *** CORRECTED BigInt Literal below ***
                 zobristHash: 0n, // Initialize Zobrist hash property
             };
             // Reset PvP toggle state only if NOT loading from file
-             if (!isLoadingFromFile) {
+            if (!isLoadingFromFile) {
                 isPlayerVsPlayerMode = false;
                 const pvpToggle = document.getElementById('pvp-toggle');
                 if (pvpToggle) pvpToggle.checked = false;
-             } // Keep existing PvP state if loading from file
+            } // Keep existing PvP state if loading from file
 
-            if (aiMoveTimeoutId) { clearTimeout(aiMoveTimeoutId); aiMoveTimeoutId = null; }
+            if (aiMoveTimeoutId) {
+                clearTimeout(aiMoveTimeoutId);
+                aiMoveTimeoutId = null;
+            }
             gameHistory = [];
 
             playerLastMoves = {
-                [PLAYERS.ORANGE]: { from: null, to: null },
-                [PLAYERS.YELLOW]: { from: null, to: null }
+                [PLAYERS.ORANGE]: {
+                    from: null,
+                    to: null
+                },
+                [PLAYERS.YELLOW]: {
+                    from: null,
+                    to: null
+                }
             };
 
             // --- Apply abilities/hungry status ---
@@ -3237,8 +3374,10 @@
                         piece.jumpH = piece.jumpH ?? abilities.jumpH ?? false;
                         piece.jumpV = piece.jumpV ?? abilities.jumpV ?? false;
                     } else {
-                        piece.swims = false; piece.attacksElephant = false;
-                        piece.jumpH = false; piece.jumpV = false;
+                        piece.swims = false;
+                        piece.attacksElephant = false;
+                        piece.jumpH = false;
+                        piece.jumpV = false;
                     }
                 }
             });
@@ -3264,10 +3403,10 @@
             clearPlayerLastMoveHighlight(PLAYERS.YELLOW);
             highlightLastMoves();
 
-             // --- Start Orange's Clock ---
-             if (!gameState.gameOver) {
+            // --- Start Orange's Clock ---
+            if (!gameState.gameOver) {
                 startClock(PLAYERS.ORANGE); // Start the clock for the first player
-             }
+            }
 
             console.log("Game Initialized. Orange starts.");
             playTurnSound();
@@ -4596,13 +4735,14 @@
         /**
          * Initializes or resets the state variables used during an AI search,
          * including node count, cancellation flag, start time, killer moves table,
-         * and the history heuristic table.
+         * and the history heuristic table. Adds logging for cancellation flag.
          * Should be called before starting a new search (e.g., in triggerAIMove).
          */
         function initializeAISearchState() {
             nodeCount = 0;
             searchStartTime = performance.now();
-            searchCancelled = false;
+            searchCancelled = false; // Reset the flag
+            console.log(">>> Search Cancelled Flag RESET to:", searchCancelled); // Add log
 
             // Initialize killer moves table
             const maxPly = (MAX_SEARCH_DEPTH || MINIMAX_DEPTH || 6) + (MAX_QUIESCENCE_DEPTH || 4) + 5;
@@ -4647,10 +4787,10 @@
             // console.log(`[Killer Added] Ply ${ply}: ${move.from}->${move.to}`);
         }
 
-        /**
+/**
          * Updates the history heuristic score for a given piece moving to a specific square.
          * Increases the score based on the bonus (typically related to search depth),
-         * capping it at AI_HISTORY_MAX.
+         * capping it at HISTORY_MAX (corrected constant name).
          *
          * @param {object} piece - The piece object { player, rank } that moved.
          * @param {string} toCoords - The destination coordinates of the move.
@@ -4673,13 +4813,25 @@
                  historyHeuristic[pieceTypeIndex] = Array(SQUARES).fill(0); // Attempt recovery
             }
 
+            // Ensure the sub-array for the square index exists (safety check)
+             if (typeof historyHeuristic[pieceTypeIndex][toSquareIndex] === 'undefined') {
+                 console.warn(`History Heuristic square index ${toSquareIndex} undefined for piece type ${pieceTypeIndex}. Initializing to 0.`);
+                 historyHeuristic[pieceTypeIndex][toSquareIndex] = 0;
+             }
+
             let currentScore = historyHeuristic[pieceTypeIndex][toSquareIndex] || 0;
             currentScore += depthBonus;
 
+            // --- CORRECTED CONSTANT NAME BELOW ---
             // Cap the score to prevent it from growing indefinitely
-            historyHeuristic[pieceTypeIndex][toSquareIndex] = Math.min(currentScore, AI_HISTORY_MAX);
+            historyHeuristic[pieceTypeIndex][toSquareIndex] = Math.min(currentScore, HISTORY_MAX);
+            // --- END CORRECTION ---
 
-            // console.log(`[History Update] ${piece.player[0]}${piece.rank}@${toCoords}: +${depthBonus} -> ${historyHeuristic[pieceTypeIndex][toSquareIndex]}`);
+
+            // Optional logging for debugging history updates
+            // if (enableTracing) {
+            //    console.log(`[History Update P${ply}] ${piece.player[0]}${piece.rank}@${toCoords}: +${depthBonus} -> ${historyHeuristic[pieceTypeIndex][toSquareIndex]}`);
+            // }
         }
 
         /**
@@ -4687,42 +4839,46 @@
          * Initializes search state, calculates time limits, runs the search iteratively,
          * dynamically adjusts depth based on piece count (with a specific cap for the opening),
          * uses a pre-emptive time check, handles results, manages the AI clock, and performs the chosen move.
+         * Includes enhanced logging in the main ID loop catch block.
          */
         function triggerAIMove() {
             console.log("AI (Yellow) is thinking...");
             const player = PLAYERS.YELLOW;
-            const aiPlayerClockTime = yellowTime;
+            const aiPlayerClockTime = yellowTime; // Get current remaining time for AI (in seconds)
 
             // --- Initialize Search State ---
-            initializeAISearchState();
+            initializeAISearchState(); // Resets nodeCount, startTime, cancelled, killers, history
 
-            // --- Calculate Time Limit ---
-            let allocatedTime = Math.max(MIN_TIME_PER_MOVE, aiPlayerClockTime * 1000 * TIME_USAGE_FACTOR);
-            allocatedTime = Math.min(allocatedTime, aiPlayerClockTime * 1000 * 0.8);
+            // --- Calculate Time Limit for this move ---
+            const positiveClockTime = Math.max(0, aiPlayerClockTime);
+            let allocatedTime = Math.max(MIN_TIME_PER_MOVE, positiveClockTime * 1000 * TIME_USAGE_FACTOR);
+            allocatedTime = Math.min(allocatedTime, positiveClockTime * 1000 * 0.8);
             allocatedTime = Math.max(allocatedTime, 500);
-            timeLimit = allocatedTime;
+            if (aiPlayerClockTime <= 0) {
+                allocatedTime = MIN_TIME_PER_MOVE;
+            }
+            timeLimit = allocatedTime; // Set global time limit (in ms)
             searchStartTime = performance.now();
 
-            console.log(`AI Time Control: Clock=${aiPlayerClockTime.toFixed(1)}s, Allocating=${(timeLimit / 1000).toFixed(2)}s`);
+            console.log(`AI Time Control: Clock=${aiPlayerClockTime.toFixed(1)}s, Allocating=${(timeLimit / 1000).toFixed(2)}s (Limit: ${timeLimit}ms)`);
 
             // --- Calculate Dynamic Depth (with opening cap) ---
             const totalPieces = Object.keys(gameState.board).length;
             let calculatedDepth;
-            // *** CORRECTED DYNAMIC DEPTH LOGIC ***
-            if (totalPieces > 12) calculatedDepth = 4;     // Early game (13-16 pieces, capped later if 16)
-            else if (totalPieces > 8) calculatedDepth = 5; // Mid game (9-12 pieces) <-- Increased from 4
-            else if (totalPieces > 6) calculatedDepth = 6; // Late Mid game (7-8 pieces)
-            else calculatedDepth = 10;                      // Endgame (<= 6 pieces)
+            // Adjusting depths slightly based on previous observation - maybe make endgame deeper earlier
+            if (totalPieces > 12) calculatedDepth = 6;
+            else if (totalPieces > 9) calculatedDepth = 7; // 8-10 pieces
+            else if (totalPieces > 6) calculatedDepth = 8; // 6-7 pieces
+            else calculatedDepth = 10; // 5 or fewer pieces -> endgame depth
 
-            // Apply specific depth cap for opening (16 pieces)
-            const OPENING_DEPTH_CAP = 4;
-            if (totalPieces === 16) {
+            const OPENING_DEPTH_CAP = 6; // Keep opening moderate
+            if (totalPieces >= 14) { // Cap only very early game
                 calculatedDepth = Math.min(calculatedDepth, OPENING_DEPTH_CAP);
                 console.log(` -> Applying opening depth cap of ${OPENING_DEPTH_CAP}`);
             }
 
-            // Ensure calculated depth doesn't exceed the global max
-            const maxDepthForThisSearch = Math.min(calculatedDepth, MAX_SEARCH_DEPTH);
+            // Ensure it doesn't exceed the absolute max
+            const maxDepthForThisSearch = Math.min(calculatedDepth, MAX_SEARCH_DEPTH); // MAX_SEARCH_DEPTH is your global limit (e.g., 10)
             console.log(`AI using max search depth: ${maxDepthForThisSearch} (Pieces: ${totalPieces}, Calc: ${calculatedDepth}, Capped: ${calculatedDepth !== maxDepthForThisSearch}, GlobalMax: ${MAX_SEARCH_DEPTH})`);
 
 
@@ -4730,59 +4886,105 @@
             let bestMoveOverall = null;
             let bestScoreOverall = -Infinity;
             let lastCompletedDepth = 0;
-            const rootState = cloneGameState(gameState);
+            const rootState = cloneGameState(gameState); // Use clone for safety
+            const playerForMax = player; // Explicitly pass AI player to findBestMove
+
+            console.log("--- Starting Iterative Deepening ---");
 
             for (let currentDepth = 1; currentDepth <= maxDepthForThisSearch; currentDepth++) {
+                console.log(`---> Starting Search for Depth ${currentDepth}...`);
                 let bestMoveThisDepth = null;
                 let bestScoreThisDepth = -Infinity;
 
+                // --- Outer Try Block for ID Iteration ---
                 try {
                     // Pre-emptive Time Check
                     const elapsedTimeMs = performance.now() - searchStartTime;
                     if (currentDepth > 1 && timeLimit > 0 && elapsedTimeMs > timeLimit * TIME_PREDICTION_FACTOR) {
                          console.log(`ID Pre-emptive Stop: Elapsed time (${(elapsedTimeMs/1000).toFixed(2)}s) exceeds prediction factor before depth ${currentDepth}.`);
-                         searchCancelled = true;
-                         break;
+                         searchCancelled = true; // Set flag
+                         break; // Stop deepening
                     }
 
-                    const result = findBestMoveMinimax(currentDepth, rootState, player);
+                    // *** Log before calling findBestMoveMinimax ***
+                    console.log(`[ID Loop D${currentDepth}] Calling findBestMoveMinimax...`);
 
+                    // Call the root search function
+                    const result = findBestMoveMinimax(currentDepth, rootState, playerForMax);
+
+                    // *** Log after findBestMoveMinimax returns ***
+                    console.log(`[ID Loop D${currentDepth}] findBestMoveMinimax returned. Result:`, result);
+
+
+                    // Check cancellation flag immediately after search returns
                     if (searchCancelled) {
-                        console.log(`Search cancelled during depth ${currentDepth}. Using results from depth ${lastCompletedDepth}.`);
-                        break;
+                        console.log(`Search cancelled flag SET during depth ${currentDepth}. Using results from depth ${lastCompletedDepth}.`);
+                        break; // Exit ID loop
                     }
 
-                    if (result && result.move) {
+                    // --- Process Result ---
+                    // Check if the result and result.move are valid *before* accessing properties
+                    if (result && result.move && result.move.from && result.move.to) {
                         bestMoveThisDepth = result.move;
                         bestScoreThisDepth = result.score;
-                        bestMoveOverall = bestMoveThisDepth;
-                        bestScoreOverall = bestScoreThisDepth;
-                        lastCompletedDepth = currentDepth;
 
-                        const currentElapsedTime = (performance.now() - searchStartTime) / 1000;
-                        console.log(`ID Depth ${currentDepth}: Best=${bestMoveOverall.from}->${bestMoveOverall.to}, Score=${bestScoreOverall.toFixed(2)}, Nodes=${nodeCount}, Time=${currentElapsedTime.toFixed(2)}s`);
+                        // Check if the result score is valid before overriding previous best
+                        if(Number.isFinite(bestScoreThisDepth)) {
+                            bestMoveOverall = bestMoveThisDepth;
+                            bestScoreOverall = bestScoreThisDepth;
+                            lastCompletedDepth = currentDepth; // Update last successfully completed depth
+                            const currentElapsedTime = (performance.now() - searchStartTime) / 1000;
+                            console.log(`ID Depth ${currentDepth} COMPLETED: Best=${bestMoveOverall.from}->${bestMoveOverall.to}, Score=${bestScoreOverall.toFixed(2)}, Nodes=${nodeCount}, Time=${currentElapsedTime.toFixed(2)}s`);
 
-                        // Check stopping conditions
-                        if (Math.abs(bestScoreOverall) > MATE_SCORE_THRESHOLD) {
-                             console.log(`ID Stop: Mate score detected at depth ${currentDepth}.`);
-                             break;
+                            // --- Check stopping conditions AFTER depth completion ---
+                            // 1. Mate Score found
+                            const mateThreshold = typeof EVAL_MATE_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATE_SCORE_THRESHOLD : (EVAL_WIN_SCORE / 1.1);
+                            if (Math.abs(bestScoreOverall) > mateThreshold) {
+                                 console.log(`ID Stop: Mate score detected at depth ${currentDepth}.`);
+                                 break; // Exit ID loop
+                            }
+                             // 2. Actual Time Limit Check
+                             if (timeLimit > 0 && performance.now() - searchStartTime >= timeLimit) {
+                                 console.log(`ID Stop: Actual time limit reached after depth ${currentDepth}.`);
+                                 searchCancelled = true; // Set flag for consistency
+                                 break; // Exit ID loop
+                             }
+
+                        } else {
+                             console.warn(`ID Warning: Invalid score returned from depth ${currentDepth}:`, result);
+                             // Don't update bestMoveOverall, rely on previous depth's valid result
+                             break; // Stop deepening if search returns invalid score
                         }
-                        if (timeLimit > 0 && performance.now() - searchStartTime >= timeLimit) {
-                             console.log(`ID Stop: Actual time limit reached after depth ${currentDepth}.`);
-                             searchCancelled = true;
-                             break;
-                         }
-
-                    } else {
-                        console.warn(`ID Warning: No valid move returned from search at depth ${currentDepth}. Using previous depth's result.`);
-                        break;
+                    } else { // Handle cases where findBestMoveMinimax returns null or invalid structure
+                        console.warn(`ID Warning: Invalid result object returned from search at depth ${currentDepth}. Using previous depth's result. Result:`, result);
+                        // Check if cancellation was the reason findBestMoveMinimax returned null prematurely
+                        if (searchCancelled) {
+                            console.log(`(Cancellation likely caused null return from findBestMoveMinimax)`);
+                        }
+                        break; // Stop deepening if search fails to return a valid move object
                     }
+                // --- End Result Processing ---
 
+                // --- Enhanced Catch Block for ID Loop ---
                 } catch (e) {
-                    console.error(`ID Error during search at depth ${currentDepth}:`, e);
-                    searchCancelled = true;
-                    break;
+                    const errorDepth = currentDepth; // Capture depth when error occurs
+                    console.error(`>>> ID LOOP CAUGHT ERROR at currentDepth = ${errorDepth} <<<`); // More prominent log
+                    // Try logging different properties of the error object
+                    console.error(`Error Message: ${e?.message}`);
+                    console.error(`Error Name: ${e?.name}`);
+                    console.error(`Error Object:`, e); // Log the raw object
+                    if (e instanceof Error && e.stack) { // Log stack trace
+                        console.error("Stack Trace:", e.stack);
+                    }
+                    // Log board state (rootState)
+                    try { console.error("Root Board State at ID Error:", getBoardStateString(rootState.board)); }
+                    catch (logError) { console.error("Could not log root board state during ID error."); }
+
+                    searchCancelled = true; // Ensure search stops
+                    break; // Exit ID loop immediately on error
                 }
+                // --- End Enhanced Catch Block ---
+
             } // End Iterative Deepening Loop
 
 
@@ -4790,7 +4992,8 @@
             const aiEndTime = performance.now();
             const totalTime = (aiEndTime - searchStartTime);
             const totalTimeSec = (totalTime / 1000).toFixed(2);
-            console.log(`AI Search Complete. Depth ${lastCompletedDepth}. Nodes: ${nodeCount}, Total Time: ${totalTimeSec}s`);
+            // Log final depth *considered* (which is lastCompletedDepth)
+            console.log(`AI Search Complete. Final Depth Considered: ${lastCompletedDepth}. Nodes: ${nodeCount}, Total Time: ${totalTimeSec}s`);
 
             // --- Deduct AI Thinking Time ---
             const elapsedSeconds = Math.max(0, Math.round(totalTime / 1000));
@@ -4801,16 +5004,19 @@
             if (yellowTime <= 0) { console.log("Yellow time ran out AFTER move calculation."); }
 
             // --- Perform Move ---
+
+            // Use bestMoveOverall found from the last *successfully completed* depth
             if (bestMoveOverall && bestMoveOverall.from && bestMoveOverall.to) {
                 console.log(`AI Performing Move: ${bestMoveOverall.from}->${bestMoveOverall.to} (from depth ${lastCompletedDepth})`);
                 performMove(bestMoveOverall.from, bestMoveOverall.to);
             } else {
-                 console.error(`AI ERROR: No best move found after Iterative Deepening! Choosing first available move.`);
+                 console.error(`AI ERROR: No best move found after Iterative Deepening! (lastCompletedDepth: ${lastCompletedDepth}). Choosing first available move.`);
                  let fallbackMove = null;
                  try {
-                    const currentValidMoves = getAllValidMoves(gameState.board, player, false).filter(m => m);
+                    // Regenerate moves from the *current actual* game state as fallback
+                    const currentValidMoves = getAllValidMoves(gameState.board, player, false).filter(m => m); // Use current state, no simulation
                      if (currentValidMoves.length > 0) {
-                         fallbackMove = currentValidMoves[0];
+                         fallbackMove = currentValidMoves[0]; // Pick the first one
                      }
                  } catch (e) { console.error("AI Fallback Error: Could not get valid moves.", e); }
 
@@ -4819,243 +5025,520 @@
                       performMove(fallbackMove.from, fallbackMove.to);
                  } else {
                      console.error("AI CRITICAL ERROR: No moves available even for fallback!");
-                     if (!gameState.gameOver) { /* Handle game over */ }
+                     // Consider ending the game or handling this state appropriately
+                     if (!gameState.gameOver) {
+                         updateStatus(`Game Over? ${player.toUpperCase()} has no legal moves.`);
+                         gameState.gameOver = true;
+                         // Determine winner based on stalemate rules if needed
+                     }
                  }
             }
-        }
+        } // End triggerAIMove
 
         /**
-         * Finds the best move for the AI at the root of the search tree.
-         * Uses the Negamax search function internally.
-         * Incorporates Transposition Table results for move ordering.
-         * Includes enhanced error logging.
+         * Finds the best move for the AI at the root of the search tree for a given depth.
+         * Uses the Negamax search function internally. Handles potentially large scores.
+         * Includes enhanced error logging and finite score checks. Adds tracing for specific moves.
+         * Clamps the final returned score and handles potential non-finite scores from search.
+         * Includes added try/catch blocks and logging for debugging move generation/ordering issues.
          *
-         * @param {number} depth - The maximum search depth.
-         * @param {object} currentGameState - The current state of the game (must include zobristHash).
+         * @param {number} depth - The maximum search depth for this iteration.
+         * @param {object} currentGameState - The game state to search from (must include zobristHash).
          * @param {string} playerForMax - The player the AI is playing as (usually YELLOW).
-         * @returns {{move: object, score: number}|null} The best move found ({from, to}) and its score (relative to playerForMax), or null if no moves.
+         * @returns {{move: object, score: number}|null} The best move found ({from, to}) and its score (relative to playerForMax), or null if no moves/error. Score is clamped.
          */
         function findBestMoveMinimax(depth, currentGameState, playerForMax) {
-            let bestScore = -Infinity; // Score relative to the AI player (playerForMax)
+            // --- Added Log ---
+            console.log(`[findBestMoveMinimax] Called for depth ${depth}. Player: ${playerForMax}`);
+            let bestScore = -Infinity; // Initialize to lowest possible value
             let bestMove = null;
             let alpha = -Infinity;
             let beta = Infinity;
 
+            // --- Initial Validation ---
             if (!currentGameState || !currentGameState.board || typeof currentGameState.zobristHash !== 'bigint') {
-                console.error("findBestMoveMinimax Error: Invalid currentGameState provided.");
+                console.error("[findBestMoveMinimax Error] Invalid currentGameState provided.");
                 return null;
             }
             if (currentGameState.currentPlayer !== playerForMax) {
-                 console.error(`findBestMoveMinimax Error: Root game state player (${currentGameState.currentPlayer}) does not match playerForMax (${playerForMax})`);
-                 return null;
-            }
-
-            let possibleMoves = [];
-            try {
-                possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer, true);
-            } catch(e) {
-                console.error("findBestMoveMinimax Error getting possible moves:", e);
+                console.error(`[findBestMoveMinimax Error] Root game state player (${currentGameState.currentPlayer}) does not match playerForMax (${playerForMax})`);
                 return null;
             }
 
+            // --- Get and Filter Root Moves ---
+            let possibleMoves = [];
+            // --- Added try/catch ---
+            try {
+                console.log(`[findBestMoveMinimax D${depth}] Getting initial possible moves...`); // Log before
+                possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer, true); // Simulate = true
+                console.log(`[findBestMoveMinimax D${depth}] Got ${possibleMoves.length} initial moves.`); // Log after
+            } catch (e) {
+                console.error(`[findBestMoveMinimax D${depth}] Error getting possible moves:`, e);
+                 if (e instanceof Error && e.stack) { console.error("Stack:", e.stack); }
+                 // Log board state at error
+                 try { console.error("Board State at Error:", getBoardStateString(currentGameState.board)); }
+                 catch (logError) { console.error("Could not log board state during get moves error."); }
+                return null; // Cannot proceed without moves
+            }
+            // --- End try/catch ---
+
+
+            // --- Check for immediate win ---
             const opponentDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+            for (const move of possibleMoves) {
+                 if (!move || !move.from || !move.to) continue; // Basic check
+                 const movingPieceCheck = currentGameState.board[move.from]; // Check piece exists
+                 if (move.to === opponentDen && movingPieceCheck && !movingPieceCheck.isHungry) { // Check if piece can enter den
+                    console.log("[findBestMoveMinimax] Found immediate winning move to Den:", move);
+                    // Return winning score immediately, no need to clamp this one
+                    return { move: move, score: EVAL_WIN_SCORE };
+                 }
+            }
+
 
             if (possibleMoves.length === 0) {
-                console.log("AI findBestMove: No possible moves found.");
+                console.log("[findBestMoveMinimax] No possible moves found at root.");
+                // Return null or perhaps a loss score? Returning null is safer.
                 return null;
             }
 
-            // --- Immediate Win Check ---
-            for (const move of possibleMoves) {
-                if (!move || !move.from || !move.to) continue;
-                if (move.to === opponentDen) {
-                    const movingPiece = currentGameState.board[move.from];
-                    if (movingPiece && !movingPiece.isHungry) {
-                        console.log("AI Found immediate winning move to Den:", move);
-                        return { move: move, score: AI_WIN_SCORE };
+            // --- Apply hungry filtering at the root ---
+            let movesToConsider = possibleMoves;
+            // --- Added try/catch ---
+            try {
+                console.log(`[findBestMoveMinimax D${depth}] Applying hungry filter...`); // Log before
+                const hungryPieces = Object.entries(currentGameState.board)
+                    .filter(([coords, piece]) => piece?.player === playerForMax && piece.isHungry)
+                    .map(([coords, piece]) => coords);
+
+                if (hungryPieces.length > 0) {
+                    const attackingHungryMoves = movesToConsider.filter(move =>
+                        move && hungryPieces.includes(move.from) && !!currentGameState.board[move.to]
+                    );
+                    if (attackingHungryMoves.length > 0) {
+                        movesToConsider = attackingHungryMoves;
+                    } else {
+                         const nonAttackingHungryMoves = movesToConsider.filter(move => move && hungryPieces.includes(move.from));
+                         if (nonAttackingHungryMoves.length > 0) {
+                             movesToConsider = nonAttackingHungryMoves;
+                         } else {
+                             // Hungry pieces exist but have no moves -> loss
+                              console.log(`[findBestMoveMinimax D${depth}] Hungry pieces exist but have no valid moves. Returning loss.`);
+                              // Ensure threshold constant exists or use direct calculation
+                              const matedThreshold = typeof EVAL_MATED_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATED_SCORE_THRESHOLD : (EVAL_LOSE_SCORE / 1.1);
+                              // Return first original possible move with mated score
+                              return { move: possibleMoves[0], score: matedThreshold }; // Return a move+score
+                         }
                     }
                 }
-            }
+                console.log(`[findBestMoveMinimax D${depth}] After hungry filter: ${movesToConsider.length} moves.`); // Log after
 
-            // --- Handle Hungry Pieces Obligation ---
-            let movesToConsider = possibleMoves;
-            try {
-                const hungryMoves = possibleMoves.filter(move => move && currentGameState.board[move.from]?.isHungry);
-                if (hungryMoves.length > 0) {
-                    const attackingHungryMoves = hungryMoves.filter(move => move && !!currentGameState.board[move.to]);
-                    if (attackingHungryMoves.length > 0) movesToConsider = attackingHungryMoves;
-                    else movesToConsider = hungryMoves;
+                // Re-check if filtering left no moves
+                if (movesToConsider.length === 0 && possibleMoves.length > 0) {
+                    console.log("[findBestMoveMinimax D${depth}] No valid moves after hungry filter at root. Returning loss.");
+                     // Ensure threshold constant exists or use direct calculation
+                     const matedThreshold = typeof EVAL_MATED_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATED_SCORE_THRESHOLD : (EVAL_LOSE_SCORE / 1.1);
+                     return { move: possibleMoves[0], score: matedThreshold }; // Return first original move with loss score
                 }
+
             } catch (e) {
-                console.error("findBestMoveMinimax Error during hungry check:", e);
-                movesToConsider = possibleMoves;
+                console.error(`[findBestMoveMinimax D${depth}] Error during hungry check at root:`, e);
+                if (e instanceof Error && e.stack) { console.error("Stack:", e.stack); }
+                // Log board state at error
+                try { console.error("Board State at Error:", getBoardStateString(currentGameState.board)); }
+                catch (logError) { console.error("Could not log board state during hungry filter error."); }
+                movesToConsider = possibleMoves; // Fallback to all moves if filter fails catastrophically
             }
+            // --- End try/catch ---
 
-            // --- Move Ordering Heuristic (TT Move First) ---
+
+            // --- Order Root Moves (using TT hint mainly) ---
             let ttBestMoveCoords = null;
-            const rootHash = currentGameState.zobristHash;
-            const rootTTEntry = transpositionTable.get(rootHash);
-            if (rootTTEntry?.bestMove) {
-                ttBestMoveCoords = rootTTEntry.bestMove;
-                const ttMoveIndex = movesToConsider.findIndex(m => m?.from === ttBestMoveCoords.from && m?.to === ttBestMoveCoords.to);
-                if (ttMoveIndex > 0) {
-                    movesToConsider.unshift(movesToConsider.splice(ttMoveIndex, 1)[0]);
-                }
-            }
+            // --- Added try/catch ---
+            try {
+                 console.log(`[findBestMoveMinimax D${depth}] Checking TT and ordering moves...`); // Log before
+                 const rootHash = currentGameState.zobristHash;
+                 const rootTTEntry = transpositionTable.get(rootHash);
+                 // Use TT hint if available and seems relevant (e.g., from similar depth)
+                 if (rootTTEntry?.bestMove && (!rootTTEntry.depth || rootTTEntry.depth >= depth - 2)) { // Heuristic check
+                      ttBestMoveCoords = rootTTEntry.bestMove;
+                      // Move TT hint move to the front for evaluation
+                      const ttMoveIndex = movesToConsider.findIndex(m => m?.from === ttBestMoveCoords.from && m?.to === ttBestMoveCoords.to);
+                      if (ttMoveIndex > 0) { // If found and not already at the front
+                          const move = movesToConsider.splice(ttMoveIndex, 1)[0];
+                          if (move) { // Ensure splice returned a valid move
+                             movesToConsider.unshift(move); // Put TT hint move first
+                             console.log(`[findBestMoveMinimax D${depth}] Prioritizing TT hint move: ${move.from}->${move.to}`);
+                          }
+                      }
+                 }
+                 // Note: Could implement full getOrderedMoves here if needed, but TT hint is primary for root.
+                 console.log(`[findBestMoveMinimax D${depth}] Move ordering complete (used TT hint if applicable).`); // Log after
 
-            // --- Evaluate Moves using Negamax Search ---
-            for (const move of movesToConsider) {
+            } catch (e) {
+                 console.error(`[findBestMoveMinimax D${depth}] Error during TT/ordering:`, e);
+                 if (e instanceof Error && e.stack) { console.error("Stack:", e.stack); }
+                 // Log board state at error
+                 try { console.error("Board State at Error:", getBoardStateString(currentGameState.board)); }
+                 catch (logError) { console.error("Could not log board state during TT/ordering error."); }
+                 // Proceed with potentially unordered moves if TT/ordering fails
+            }
+            // --- End try/catch ---
+
+
+            // --- Evaluate Each Root Move ---
+            console.log(`[findBestMoveMinimax D${depth}] Evaluating ${movesToConsider.length} moves...`);
+            for (let i = 0; i < movesToConsider.length; i++) {
+                const move = movesToConsider[i];
+                // Safety check
                 if (!move || !move.from || !move.to) {
-                    console.warn("[findBestMoveMinimax] Skipping invalid move in movesToConsider:", move);
+                    console.warn(`[findBestMoveMinimax D${depth}] Skipping invalid move object at index ${i}:`, move);
                     continue;
                 };
 
-                let score = -Infinity;
-                let simResult = null;
+                let scoreForThisMove;
+                let isTracedMove = enableTracing && move.from === TRACE_MOVE.from && move.to === TRACE_MOVE.to; // Check enableTracing flag too
 
+                // --- Added try/catch around search call ---
                 try {
+                    console.log(`[findBestMoveMinimax D${depth}] Simulating move ${i+1}/${movesToConsider.length}: ${move.from}->${move.to}`); // Log simulation start
+                    // Simulate the move
                     const stateForSim = cloneGameState(currentGameState);
-                    simResult = simulateMove(stateForSim, move);
+                    const simResult = simulateMove(stateForSim, move);
+                    if (!simResult || !simResult.nextState) {
+                        console.error(`[findBestMoveMinimax D${depth}] Simulation failed for move ${move.from}->${move.to}`);
+                        scoreForThisMove = -Infinity; // Penalize simulation failure
+                    } else {
+                        // Enable tracing ONLY for the specific recursive call if needed
+                        const originalTraceState = enableTracing; // Store current state
+                        if (isTracedMove) {
+                            console.log(`[Trace ${move.from}->${move.to} D${depth}] ---> Calling search(${depth - 1}, ..., ply=1)`);
+                            enableTracing = true; // Enable for this call branch
+                        }
 
-                    if (!simResult || !simResult.nextState || !simResult.nextState.board) {
-                        console.error(`[findBestMoveMinimax] Simulation failed for move ${move.from}->${move.to}`);
-                        continue;
+                        console.log(`[findBestMoveMinimax D${depth}] Calling search(${depth - 1}, ...) for ${move.from}->${move.to}`); // Log search call
+                        // Call the recursive search function for the resulting state
+                        // Note the negation for Negamax and the swapped alpha/beta
+                        scoreForThisMove = -search(depth - 1, simResult.nextState, -beta, -alpha, playerForMax, 1);
+                        console.log(`[findBestMoveMinimax D${depth}] search() returned for ${move.from}->${move.to}`); // Log search return
+
+                         // Restore original trace state AFTER the call returns
+                        if (isTracedMove) {
+                            enableTracing = originalTraceState;
+                        }
+
+                         // ** Check for Non-Finite Score from Search **
+                         if (!Number.isFinite(scoreForThisMove)) {
+                             console.warn(`[findBestMoveMinimax D${depth}] search() returned non-finite score (${scoreForThisMove}) for ${move.from}->${move.to}. Clamping.`);
+                             scoreForThisMove = -Infinity; // Treat unexpected non-finite as worst possible outcome
+                         }
+
+                        // Log result if tracing was enabled for this move OR globally
+                        if (isTracedMove || originalTraceState) {
+                             console.log(`[findBestMoveMinimax D${depth} Eval] Move: ${move.from}->${move.to}, Raw score from -search: ${Number.isFinite(scoreForThisMove) ? scoreForThisMove.toFixed(2) : scoreForThisMove} (Finite: ${Number.isFinite(scoreForThisMove)})`);
+                        }
+                        if (isTracedMove) { // Log return specific to traced move
+                             console.log(`[Trace ${move.from}->${move.to} D${depth}] <--- Returned score (negated): ${Number.isFinite(scoreForThisMove) ? scoreForThisMove.toFixed(2) : scoreForThisMove}`);
+                        }
                     }
-                    const { nextState } = simResult;
 
-                    // Call search for the child node (opponent's turn)
-                    score = -search(depth - 1, nextState, -beta, -alpha, playerForMax, 1);
+                } catch (e) { // Catch errors specifically from simulate or search call
+                    console.error(`[findBestMoveMinimax D${depth}] Error during simulation or search call for move ${move.from}->${move.to}:`, e);
+                    if (e instanceof Error) { console.error("Stack:", e.stack); }
+                     // Log board state at error
+                     try { console.error("Board State at Error:", getBoardStateString(currentGameState.board)); }
+                     catch (logError) { console.error("Could not log board state during sim/search error."); }
+                    if (isTracedMove) enableTracing = false; // Ensure tracing is disabled on error if it was turned on
+                    scoreForThisMove = -Infinity; // Assign safe losing score on error
+                }
+                // --- End try/catch ---
 
-                } catch (e) {
-                    // *** Enhanced Error Logging ***
-                    console.error(`[findBestMoveMinimax] Error during simulation or search call for move ${move.from}->${move.to}:`);
-                    console.error("Caught Error Object:", e);
-                    if (e instanceof Error) {
-                        console.error("Error Message:", e.message);
-                        console.error("Error Stack:", e.stack);
-                    }
-                    // *** End Enhanced Logging ***
-                    continue; // Skip this move on error
+
+                // --- Check for Cancellation ---
+                // Important to check *after* the search call returns
+                if (searchCancelled) {
+                    console.log(`[findBestMoveMinimax D${depth}] Cancelled after searching move ${move.from}->${move.to}`);
+                    if (isTracedMove) enableTracing = false; // Ensure trace is off if cancelled during trace
+                     // Return the best move found *so far* before cancellation, clamped
+                     let finalClampedScore = bestScore === -Infinity ? EVAL_LOSE_SCORE : Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, bestScore));
+                    return bestMove ? { move: bestMove, score: finalClampedScore } : null;
                 }
 
-                // --- Update Best Move (Root Level) ---
-                if (score > bestScore) {
-                    bestScore = score;
+                // --- Update Best Move Found So Far ---
+                // Use the validated scoreForThisMove (guaranteed finite here)
+                if (scoreForThisMove > bestScore) {
+                    const previousBest = bestScore === -Infinity ? "-Infinity" : bestScore.toFixed(2);
+                    console.log(`[findBestMoveMinimax D${depth}] New best move: ${move.from}->${move.to} (Score: ${scoreForThisMove.toFixed(2)} > Current Best: ${previousBest})`);
+                    bestScore = scoreForThisMove;
                     bestMove = move;
                 }
 
-                // --- Alpha Update (Root Level) ---
-                alpha = Math.max(alpha, score);
+                // --- Update Alpha ---
+                // Alpha is the best score guaranteed for the maximizing player (root player)
+                alpha = Math.max(alpha, bestScore);
+                // Note: Beta cutoff doesn't happen at the root level (alpha starts at -inf, beta at +inf)
 
-            } // End loop through movesToConsider
+            } // End root move loop
 
+            console.log(`[findBestMoveMinimax D${depth}] Finished loop. Best move: ${bestMove ? bestMove.from + '->' + bestMove.to : 'None'}, Final Best Score: ${Number.isFinite(bestScore) ? bestScore.toFixed(2) : bestScore}`);
 
+            // --- Final Cleanup and Return ---
             if (bestMove) {
-                 return { move: bestMove, score: bestScore };
+                // ** Clamp the final bestScore before returning **
+                let finalClampedScore = bestScore;
+                if (!Number.isFinite(finalClampedScore)) {
+                    console.warn(`[findBestMoveMinimax D${depth}] Final bestScore is non-finite (${finalClampedScore}) before return. Resetting to 0.`);
+                    finalClampedScore = 0; // Default to neutral score
+                }
+                // Apply clamps based on EVAL constants
+                finalClampedScore = Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, finalClampedScore));
+
+                if (finalClampedScore !== bestScore && Number.isFinite(bestScore)) { // Log if clamping occurred
+                     console.log(`[findBestMoveMinimax D${depth}] Clamped final score from ${bestScore.toFixed(2)} to ${finalClampedScore.toFixed(2)}`);
+                }
+
+                return { move: bestMove, score: finalClampedScore }; // Return the best move found and its clamped score
             }
 
-             console.warn("Search root didn't find ANY viable best move. Picking first valid move as fallback.");
-             const fallbackMove = movesToConsider.find(m => m);
-             if (fallbackMove) {
-                 return { move: fallbackMove, score: -Infinity };
-             } else {
-                  console.error("AI findBestMove: No valid moves left even for fallback!");
-                  return null;
-             }
+            // --- Fallback if no move improved bestScore from -Infinity ---
+            console.warn(`[findBestMoveMinimax D${depth}] Search root completed without finding a viable best move (bestScore remained -Infinity). Fallback.`);
+            // Pick the first available move as a desperate fallback
+            const fallbackMove = movesToConsider.find(m => m); // Find the first valid move object
+            if (fallbackMove) {
+                 // Ensure threshold constant exists or use direct calculation
+                 const matedThreshold = typeof EVAL_MATED_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATED_SCORE_THRESHOLD : (EVAL_LOSE_SCORE / 1.1);
+                return { move: fallbackMove, score: matedThreshold }; // Return fallback with losing score
+            } else {
+                // This should be extremely rare if initialPossibleMoves had items
+                console.error(`[findBestMoveMinimax D${depth}] CRITICAL FALLBACK FAILURE: No moves in movesToConsider list after filtering!`);
+                return null; // No move possible at all
+            }
         }
 
-        /**
+/**
          * Quiescence Search: Extends the search depth to evaluate "noisy" positions
          * (captures, den threats) until a stable (quiet) position is reached or max depth hit.
-         * Includes time limit checks based on the global `timeLimit`.
+         * Includes time limit checks, repetition checks, and stand-pat pruning.
+         * Applies immediate opponent trap capture check.
+         * *** Adds specific bonus if playerForMax's Lion is near opponent den. ***
          *
          * @param {object} nodeGameState - The game state at the current node (must include zobristHash).
          * @param {number} alpha - The lower bound for the current player.
          * @param {number} beta - The upper bound for the current player.
          * @param {number} ply - The current total search depth (main search + quiescence).
-         * @returns {number} The evaluated score for the stable position, relative to the player whose turn it is in nodeGameState.
+         * @returns {number} The evaluated score for the stable position, relative to the player whose turn it is in nodeGameState. Clamped score.
          */
         function qsearch(nodeGameState, alpha, beta, ply) {
             nodeCount++;
-
-            // --- Frequent Time Limit Check ---
-            // Use the global 'timeLimit' variable calculated in triggerAIMove
-            // Check every N nodes (e.g., 1023 = 1024-1)
-            // REMOVED check for `TIME_LIMIT_MS > 0`
-            if (searchCancelled || ((nodeCount & 1023) === 0 && timeLimit > 0 && performance.now() - searchStartTime > timeLimit)) {
-                if (!searchCancelled) searchCancelled = true;
-                return 0; // Return neutral score if time is up
+            // Basic validation at the start
+            if (!nodeGameState || !nodeGameState.board || typeof nodeGameState.zobristHash !== 'bigint' || !nodeGameState.currentPlayer) {
+                console.error(`[QSearch Error P${ply}] Invalid nodeGameState received.`);
+                try { console.error("Received State:", JSON.stringify(nodeGameState)); } catch { /* ignore */ }
+                return 0; // Return neutral score on critical error
             }
+            const nodePlayer = nodeGameState.currentPlayer; // Player whose turn it IS at this node
+            const opponent = nodePlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+            const currentHash = nodeGameState.zobristHash;
+            // Determine opponent's den based on the nodePlayer
+            const opponentDen = nodePlayer === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+            const opponentDenRC = getRowCol(opponentDen);
+
+            // --- Time & Cancellation Checks ---
+            if (searchCancelled || (timeLimit > 0 && (nodeCount & 1023) === 0 && performance.now() - searchStartTime > timeLimit)) {
+                if (!searchCancelled) searchCancelled = true;
+                // if(enableTracing) console.log(`[Trace QSearch P${ply}] Time/Cancel Triggered.`);
+                return 0;
+            }
+            if (searchCancelled) return 0;
 
             // --- Max Depth Check ---
             if (ply >= MAX_SEARCH_DEPTH + MAX_QUIESCENCE_DEPTH) {
-                return evaluateBoard(nodeGameState.board, nodeGameState.currentPlayer);
+                 // if(enableTracing) console.log(`[Trace QSearch P${ply}] Max QSearch Depth Reached. Evaluating.`);
+                try {
+                    let evalScore = evaluateBoard(nodeGameState.board, nodePlayer); // Use V4 static eval
+                    return Number.isFinite(evalScore) ? Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, evalScore)) : 0;
+                } catch (e) {
+                    console.error(`[QSearch MaxDepth Eval Error] P${ply}:`, e);
+                    return 0; // Return neutral on error
+                }
             }
 
-            // --- Repetition Check (Optional) ---
-            const currentHash = nodeGameState.zobristHash;
+            // --- Repetition Check (using main game history) ---
             const repetitionCount = gameState.boardStateHistory[currentHash.toString()] || 0;
             if (repetitionCount >= 2 && ply > 0) {
+                 // if(enableTracing) console.log(`[Trace QSearch P${ply}] Repetition detected. Returning 0.`);
                 return 0; // Draw score
             }
 
             // --- Stand-Pat Score ---
-            const standPatScore = evaluateBoard(nodeGameState.board, nodeGameState.currentPlayer);
+            let standPatScore = EVAL_LOSE_SCORE; // Default to loss
+            try {
+                standPatScore = evaluateBoard(nodeGameState.board, nodePlayer); // Eval relative to nodePlayer
+                standPatScore = Number.isFinite(standPatScore) ? Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, standPatScore)) : EVAL_LOSE_SCORE;
+
+                // --- *** NEW: Apply QSearch Lion Bonus to Stand-Pat *** ---
+                // Check if *nodePlayer's* Lion is near the *opponent's* den
+                let lionCoords = null;
+                for(const coords in nodeGameState.board) {
+                    const piece = nodeGameState.board[coords];
+                    if(piece && piece.player === nodePlayer && piece.rank === 7) {
+                        lionCoords = coords;
+                        break;
+                    }
+                }
+                if (lionCoords && opponentDenRC) {
+                    const lionRC = getRowCol(lionCoords);
+                    if (lionRC) {
+                        const dist = Math.abs(lionRC.row - opponentDenRC.row) + Math.abs(lionRC.col - opponentDenRC.col);
+                        if (dist === 1 && !nodeGameState.board[lionCoords]?.isHungry) { // Adjacent Bonus
+                             standPatScore += QSEARCH_LION_ADJACENT_DEN_BONUS;
+                             // console.log(`[QSearch P${ply} Lion Bonus] Added Adjacent bonus ${QSEARCH_LION_ADJACENT_DEN_BONUS}. New standPat: ${standPatScore}`);
+                        } else if (dist === 2 && !nodeGameState.board[lionCoords]?.isHungry) { // Near Bonus
+                             standPatScore += QSEARCH_LION_NEAR_DEN_BONUS;
+                             // console.log(`[QSearch P${ply} Lion Bonus] Added Near bonus ${QSEARCH_LION_NEAR_DEN_BONUS}. New standPat: ${standPatScore}`);
+                        }
+                    }
+                }
+                 // Re-clamp after adding bonus
+                 standPatScore = Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, standPatScore));
+                // --- *** END: QSearch Lion Bonus *** ---
+
+            } catch (e) {
+                console.error(`[QSearch Eval Error] P${ply}:`, e);
+                standPatScore = EVAL_LOSE_SCORE; // Assign safe value on error
+            }
+
 
             // --- Stand-Pat Pruning ---
-            if (standPatScore >= beta) return beta;
-            if (standPatScore > alpha) alpha = standPatScore;
+            if (standPatScore >= beta) {
+                 // if (enableTracing) console.log(`[Trace QSearch P${ply}] Stand-Pat Beta Cutoff: ${standPatScore.toFixed(1)} >= ${beta.toFixed(1)}`);
+                return beta; // Fail-hard beta cutoff
+            }
+            // Update alpha if stand-pat score improves it
+            if (standPatScore > alpha) {
+                 // if (enableTracing) console.log(`[Trace QSearch P${ply}] Stand-Pat Alpha Update: ${standPatScore.toFixed(1)} > ${alpha.toFixed(1)}`);
+                alpha = standPatScore;
+            }
 
-            // --- Generate & Order Noisy Moves ---
+            // --- Immediate Opponent Trap Capture Check ---
+            const opponentTraps = opponent === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow;
+            try {
+                const opponentMovesImmediate = getAllValidMoves(nodeGameState.board, opponent, true);
+                for (const oppMove of opponentMovesImmediate) {
+                     if (!oppMove || !oppMove.from || !oppMove.to) continue;
+                    const targetPiece = nodeGameState.board[oppMove.to];
+                    if (targetPiece && targetPiece.player === nodePlayer && opponentTraps.has(oppMove.to)) {
+                        const attackerPiece = nodeGameState.board[oppMove.from];
+                        if (attackerPiece) {
+                             const isRatVsElephantNormal = (attackerPiece.rank === 1 && targetPiece.rank === 8 && !WATER_SQUARES.has(oppMove.from));
+                             if (attackerPiece.rank < targetPiece.rank && !isRatVsElephantNormal) {
+                                 // if (enableTracing) console.log(`[Trace QSearch P${ply}] STAND-PAT TRAP LOSS DETECTED...`);
+                                // Ensure threshold constant exists or use direct calculation
+                                const matedThreshold = typeof EVAL_MATED_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATED_SCORE_THRESHOLD : (EVAL_LOSE_SCORE / 1.1);
+                                 return matedThreshold + ply;
+                             }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error(`[QSearch Error] P${ply} Error checking immediate opponent trap captures:`, e);
+            }
+            // --- End Opponent Trap Check ---
+
+
+            // --- Generate & Order Noisy Moves (Current Player's moves) ---
             let noisyMoves = [];
             try {
-                const allMoves = getAllValidMoves(nodeGameState.board, nodeGameState.currentPlayer, true);
-                const opponentDen = nodeGameState.currentPlayer === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
-                const adjacentToOppDen = getAdjacentCoords(opponentDen);
+                const allMoves = getAllValidMoves(nodeGameState.board, nodePlayer, true);
+                const adjacentToOppDenSet = new Set(getAdjacentCoords(opponentDen)); // Use Set
                 const tempScoredMoves = [];
-                for(const move of allMoves) {
-                    if (!move || !move.to) continue;
-                    let score = 0;
-                    let isNoisy = false;
-                    if (nodeGameState.board[move.to]) { // Capture
-                        score = getMvvLvaScore(move, nodeGameState.board);
+
+                // Define scores for ordering noisy moves (simplified, mainly captures vs den threats)
+                const SCORE_DEN_WIN = 14000; // Lower than MVV/LVA
+                const SCORE_MVV_LVA_BASE = 15000; // Make captures highest priority
+                const SCORE_DEN_THREAT = 8000; // Moving adjacent
+
+                for (const move of allMoves) {
+                    if (!move || !move.from || !move.to) continue;
+                    const targetPiece = nodeGameState.board[move.to];
+                    const movingPiece = nodeGameState.board[move.from];
+                    if (!movingPiece) continue;
+
+                    let score = 0; let isNoisy = false;
+
+                    if (targetPiece) { // Is it a capture?
+                        score = SCORE_MVV_LVA_BASE + getMvvLvaScore(move, nodeGameState.board);
                         isNoisy = true;
-                    } else if (move.to === opponentDen && !nodeGameState.board[move.from]?.isHungry) { // Den move
-                         score = 9000;
-                         isNoisy = true;
-                    } else if (adjacentToOppDen.includes(move.to)) { // Adjacent to den
-                         score = 8000;
-                         isNoisy = true;
+                    } else { // Not a capture, check for other noisy types
+                        if (move.to === opponentDen && !movingPiece.isHungry) {
+                            score = SCORE_DEN_WIN;
+                            isNoisy = true;
+                        } else if (adjacentToOppDenSet.has(move.to) && !movingPiece.isHungry) {
+                             score = SCORE_DEN_THREAT;
+                             isNoisy = true;
+                        }
+                         // Could add checks for check evasion if needed
                     }
-                    if (isNoisy) tempScoredMoves.push({ move: move, score: score });
+
+                    if (isNoisy) {
+                        tempScoredMoves.push({ move: move, score: score });
+                    }
                 }
+                // Sort noisy moves: highest score first
                 tempScoredMoves.sort((a, b) => b.score - a.score);
                 noisyMoves = tempScoredMoves.map(item => item.move);
+
             } catch (e) {
-                console.error(`[QSearch Error] Error getting/filtering moves at ply ${ply}:`, e);
-                return standPatScore;
+                 console.error(`[QSearch Error] Error getting/filtering noisy moves at ply ${ply}. State Hash: ${currentHash}`, e);
+                 if (e instanceof Error && e.stack) console.error("Stack Trace:", e.stack);
+                 try { console.error("Board State at Error:", getBoardStateString(nodeGameState.board)); }
+                 catch (logError) { console.error("Could not log board state during QSearch noisy move error."); }
+                 // If move generation fails, rely on stand-pat score calculated earlier
+                 return standPatScore; // Return potentially adjusted stand-pat
             }
 
             // --- Base Case: No Noisy Moves ---
             if (noisyMoves.length === 0) {
-                return standPatScore;
+                 // if (enableTracing) console.log(`[Trace QSearch P${ply}] No noisy moves found. Returning Stand-Pat: ${standPatScore.toFixed(1)}`);
+                return standPatScore; // Return the potentially adjusted stand-pat score
             }
 
             // --- Explore Noisy Moves ---
-            let bestScore = standPatScore;
+            let bestScore = standPatScore; // Start with stand-pat as the initial best
+
             for (const move of noisyMoves) {
-                if (!move || !move.from || !move.to) continue;
+                if (!move || !move.from || !move.to) continue; // Safety
+
                 const stateForSim = cloneGameState(nodeGameState);
                 const simResult = simulateMove(stateForSim, move);
-                if (!simResult || !simResult.nextState) continue;
-                const { nextState } = simResult;
-                const score = -qsearch(nextState, -beta, -alpha, ply + 1);
-                if (searchCancelled) return 0; // Check immediately
-                bestScore = Math.max(bestScore, score);
-                alpha = Math.max(alpha, bestScore);
-                if (alpha >= beta) break; // Beta cutoff
-            }
-            return bestScore;
+                if (!simResult || !simResult.nextState) {
+                    console.warn(`[QSearch Warn] Simulation failed for noisy move ${move.from}->${move.to} at ply ${ply}`);
+                    continue; // Skip this move if simulation fails
+                }
+
+                // Recursive call for the opponent, searching noisy moves from the resulting state
+                const score = -qsearch(simResult.nextState, -beta, -alpha, ply + 1);
+
+                if (searchCancelled) return 0; // Check cancellation
+
+                const finiteScore = Number.isFinite(score) ? score : EVAL_LOSE_SCORE; // Treat non-finite as worst outcome
+
+                bestScore = Math.max(bestScore, finiteScore); // Update best score found so far
+                alpha = Math.max(alpha, bestScore);      // Update alpha
+
+                // Beta Cutoff Check
+                if (alpha >= beta) {
+                     // if (enableTracing) console.log(`[Trace QSearch P${ply}] Beta Cutoff during noisy moves. Alpha ${alpha.toFixed(1)} >= Beta ${beta.toFixed(1)}. Cutoff Move: ${move.from}->${move.to}`);
+                    return beta; // Fail-hard beta cutoff
+                }
+            } // End loop through noisy moves
+
+            // Clamp the final best score before returning
+            bestScore = Number.isFinite(bestScore) ? bestScore : standPatScore; // Fallback to standPat
+            const finalClampedScore = Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, bestScore));
+
+            // if (enableTracing) console.log(`[Trace QSearch P${ply}] Returning final score after noisy moves: ${finalClampedScore.toFixed(1)}`);
+            return finalClampedScore;
         }
 
 
@@ -5076,8 +5559,8 @@
             const attacker = board[move.from];
             if (!attacker) return 0; // Should not happen if move is valid
 
-            const victimValue = AI_PIECE_VALUES[victim.rank] || 10; // Default value if rank somehow invalid
-            const attackerValue = AI_PIECE_VALUES[attacker.rank] || 100; // Default high value if rank invalid
+            const victimValue = EVAL_PIECE_VALUES[victim.rank] || 10; // Default value if rank somehow invalid
+            const attackerValue = EVAL_PIECE_VALUES[attacker.rank] || 100; // Default high value if rank invalid
 
             // Base score ensures captures are generally higher than quiet moves
             // Victim value scaled up, attacker value subtracted
@@ -5090,6 +5573,7 @@
         /**
          * Generates and orders valid moves for the current node in the search.
          * Prioritizes moves based on: TT Hint > Captures (MVV-LVA) > Killers > Den Threats > History Heuristic > Other Quiet Moves.
+         * Uses corrected constant name for killer move scoring.
          *
          * @param {object} nodeGameState - The game state at the current node (must include board, currentPlayer).
          * @param {object | null} ttBestMove - The best move suggested by the Transposition Table { from, to } or null.
@@ -5105,44 +5589,61 @@
             const board = nodeGameState.board;
             const currentPlayer = nodeGameState.currentPlayer;
             const opponentDen = currentPlayer === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
-            const adjacentToOppDen = getAdjacentCoords(opponentDen);
+            const adjacentToOppDenSet = new Set(getAdjacentCoords(opponentDen)); // Use Set for faster lookup
 
-            // Score Definitions (higher is better)
+            // --- Score Definitions (higher is better) ---
             const SCORE_TT_MOVE = 100000;
-            // MVV_LVA scores start around 10000+
-            const SCORE_KILLER_1 = AI_KILLER_MOVE_BONUS;      // e.g., 7500
-            const SCORE_KILLER_2 = AI_KILLER_MOVE_BONUS - 5; // e.g., 7495
-            const SCORE_DEN_ATTACK = 7000; // Lower than killers now
-            const SCORE_DEN_ADJACENT = 6500;
-            // History Heuristic scores range from 0 up to AI_HISTORY_MAX (e.g., 10000),
-            // but we'll give them a base below killers/den threats for sorting.
-            const SCORE_HISTORY_BASE = 0; // Base score, actual history value added
+            // MVV_LVA scores start around 10000+ (assuming MVV_LVA_BASE_SCORE is 10000)
+            // Use the globally defined KILLER_MOVE_BONUS constant
+            const SCORE_KILLER_1 = KILLER_MOVE_BONUS;      // e.g., 7500 (Uses the corrected constant)
+            const SCORE_KILLER_2 = KILLER_MOVE_BONUS - 5; // e.g., 7495 (Uses the corrected constant)
+            const SCORE_DEN_ATTACK = 7000; // Score for moving directly into opponent den
+            const SCORE_DEN_ADJACENT = 6500; // Score for moving adjacent to opponent den
+            // History Heuristic scores range from 0 up to HISTORY_MAX (e.g., 10000),
+            // Added to a base score to sort among quiet moves.
+            const SCORE_HISTORY_BASE = 0;
             const SCORE_QUIET = 0; // Default for unclassified quiet moves
 
             const scoredMoves = [];
+            // Access killer moves safely
             const killer1 = killerMoves[ply]?.[0];
             const killer2 = killerMoves[ply]?.[1];
 
             for (const move of movesToConsider) {
-                if (!move || !move.from || !move.to) continue;
+                // Basic safety check
+                if (!move || !move.from || !move.to) {
+                    console.warn(`[getOrderedMoves Warn] Skipping invalid move object:`, move);
+                    continue;
+                }
 
-                let score = SCORE_QUIET;
-                const piece = board[move.from]; // Get piece data for history lookup
-                const isCapture = !!board[move.to];
+                let score = SCORE_QUIET; // Default score
+                const piece = board[move.from]; // Get piece data for history/den check
+                const targetPiece = board[move.to]; // Get target piece data for capture check
+                const isCapture = !!targetPiece;
 
-                // 1. TT Hint Move
+                // Ensure piece exists before proceeding with checks that need it
+                if (!piece) {
+                    console.warn(`[getOrderedMoves Warn] Piece not found at ${move.from} for move scoring. Skipping bonus scoring.`);
+                    // Assign MVV/LVA score if it's a capture, otherwise keep quiet score
+                    score = isCapture ? getMvvLvaScore(move, board) : SCORE_QUIET;
+                    scoredMoves.push({ move: move, score: score });
+                    continue; // Move to next iteration
+                }
+
+
+                // 1. TT Hint Move (Highest Priority)
                 if (ttBestMove && move.from === ttBestMove.from && move.to === ttBestMove.to) {
                     score = SCORE_TT_MOVE;
                 } else {
                     // 2. Captures (MVV-LVA)
                     if (isCapture) {
-                        score = getMvvLvaScore(move, board);
+                        score = getMvvLvaScore(move, board); // Calculate MVV-LVA score
                     } else {
-                        // --- Quiet Moves ---
+                        // --- Scoring for Quiet Moves ---
                         let isKiller = false;
                         let isDenThreat = false;
 
-                        // 3. Killer Moves
+                        // 3. Killer Moves (Check if it matches stored killers for this ply)
                         if (killer1 && move.from === killer1.from && move.to === killer1.to) {
                             score = SCORE_KILLER_1;
                             isKiller = true;
@@ -5151,42 +5652,47 @@
                             isKiller = true;
                         }
 
-                        // 4. Den Threats (if not Killer)
+                        // 4. Den Threats (If not a Killer move)
                         if (!isKiller) {
-                            if (move.to === opponentDen) {
-                                if (!piece?.isHungry) { score = SCORE_DEN_ATTACK; isDenThreat = true; }
-                                else if (adjacentToOppDen.includes(move.to)) { score = SCORE_DEN_ADJACENT; isDenThreat = true; }
-                            } else if (adjacentToOppDen.includes(move.to)) {
+                            if (move.to === opponentDen && !piece.isHungry) { // Check if moving to opponent den (and not hungry)
+                                score = SCORE_DEN_ATTACK;
+                                isDenThreat = true;
+                            } else if (adjacentToOppDenSet.has(move.to) && !piece.isHungry) { // Check if moving adjacent to opponent den
                                 score = SCORE_DEN_ADJACENT;
                                 isDenThreat = true;
                             }
                         }
 
-                        // 5. History Heuristic (if not Killer or Den Threat)
-                        if (!isKiller && !isDenThreat && piece) {
+                        // 5. History Heuristic (If not Killer or Den Threat)
+                        if (!isKiller && !isDenThreat) {
                             const pieceTypeIndex = getPieceTypeIndex(piece.player, piece.rank);
                             const toSquareIndex = getSquareIndex(move.to);
                             if (pieceTypeIndex !== -1 && toSquareIndex !== -1) {
-                                // History score adds to a base, ensuring it's below killers/den threats
-                                // but allows sorting among other quiet moves.
+                                // Add history score to base, ensuring it's below killers/den threats for sorting
                                 score = SCORE_HISTORY_BASE + (historyHeuristic[pieceTypeIndex]?.[toSquareIndex] || 0);
                             }
                         }
-                        // --- End Quiet Moves ---
+                        // --- End Scoring for Quiet Moves ---
                     }
                 }
                 scoredMoves.push({ move: move, score: score });
-            }
+            } // End loop through moves
 
+            // Sort all scored moves in descending order of score
             scoredMoves.sort((a, b) => b.score - a.score);
 
+            // Return just the move objects in the sorted order
             return scoredMoves.map(item => item.move);
         }
 
         /**
-         * Negamax search function with Alpha-Beta Pruning, TT integration, Killers, History.
+         * Negamax search function with Alpha-Beta Pruning, TT integration, Killers, History, NMP, LMR, and Futility Pruning.
          * Uses getOrderedMoves for efficiency. Calls Quiescence Search (`qsearch`) at depth limit.
-         * Includes frequent time checks based on the global `timeLimit`.
+         * Includes frequent time checks based on the global `timeLimit`. Corrects TT score storage and return value adjustments.
+         * Includes detailed logging. Now includes tracing logs controlled by `enableTracing`.
+         * Fixes potential return of -Infinity when all moves fail low or are pruned.
+         * Incorporates improved error logging for move generation/ordering phase.
+         * Uses EVAL_ derived constants for mate thresholds.
          *
          * @param {number} depth - Remaining depth to search.
          * @param {object} nodeGameState - Game state at current node (must have zobristHash).
@@ -5194,42 +5700,64 @@
          * @param {number} beta - Upper bound for current player.
          * @param {string} playerForMax - The AI player (needed for eval context).
          * @param {number} ply - Current depth from the root (0 at root).
-         * @returns {number} Evaluated score relative to the player at nodeGameState.
+         * @param {boolean} [canNullMove=true] - Flag to indicate if null move is allowed.
+         * @param {boolean} [inCheck=false] - Flag indicating if the current player is in check (simplified).
+         * @returns {number} Evaluated score relative to the player at nodeGameState. Returns a finite score, potentially a mate score.
          */
-        function search(depth, nodeGameState, alpha, beta, playerForMax, ply) {
+        function search(depth, nodeGameState, alpha, beta, playerForMax, ply, canNullMove = true, inCheck = false) {
             nodeCount++;
+            const nodePlayer = nodeGameState.currentPlayer;
+            const currentHash = nodeGameState.zobristHash;
 
-            // --- Frequent Time Limit Check ---
-            // Use the global 'timeLimit' variable calculated in triggerAIMove
-            // Check every N nodes (e.g., 2047 = 2048-1) and if ply > 1
-            // REMOVED check for `TIME_LIMIT_MS > 0`
-            if (searchCancelled || (ply > 1 && timeLimit > 0 && (nodeCount & 2047) === 0 && performance.now() - searchStartTime > timeLimit)) {
-                if (!searchCancelled) searchCancelled = true;
+            // --- Tracing Log ---
+            if (enableTracing) {
+                console.log(`[Trace P${ply} D${depth}] Entering search. Player:${nodePlayer} Alpha:${alpha.toFixed(1)} Beta:${beta.toFixed(1)} Hash:${currentHash} Board: ${getBoardStateString(nodeGameState.board)}`);
+            }
+            // --- End Tracing ---
+
+            // --- Time & Cancellation Checks ---
+            if (searchCancelled || (timeLimit > 0 && (nodeCount & 2047) === 0 && performance.now() - searchStartTime > timeLimit)) {
+                if (!searchCancelled) {
+                    searchCancelled = true;
+                }
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Search cancelled by time/flag.`);
                 return 0; // Return neutral score if cancelled
             }
+            if (searchCancelled) return 0;
 
             // --- Repetition Check ---
-            const currentHash = nodeGameState.zobristHash;
-            if (ply > 0) {
+            if (ply > 0) { // Don't check repetition at the root (ply 0)
                 const repetitionCount = gameState.boardStateHistory[currentHash.toString()] || 0;
-                if (repetitionCount >= 2) return 0;
+                if (repetitionCount >= 2) {
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] Repetition detected. Returning 0 (Draw Score).`);
+                    return 0; // Draw score
+                }
             }
 
-            // --- Base Cases ---
+            // --- Game Over Check ---
             if (nodeGameState.gameOver) {
-                if (nodeGameState.winner === nodeGameState.currentPlayer) return MATE_SCORE_THRESHOLD - ply;
-                if (nodeGameState.winner === null) return 0;
-                return MATED_SCORE_THRESHOLD + ply;
+                let score = 0;
+                if (nodeGameState.winner === nodePlayer) score = EVAL_WIN_SCORE - ply; // Adjust by ply for faster mate
+                else if (nodeGameState.winner === null) score = 0; // Draw
+                else score = EVAL_LOSE_SCORE + ply; // Adjust by ply for faster mate
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Game Over. Winner: ${nodeGameState.winner}. Score: ${score}`);
+                // Ensure returned score is within bounds even with ply adjustment
+                return Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, score));
             }
+
+            // --- Max Depth Check (Leaf Node) ---
             if (depth <= 0) {
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Depth 0. Calling qsearch.`);
                 try {
-                     return qsearch(nodeGameState, alpha, beta, ply);
+                    const qScore = qsearch(nodeGameState, alpha, beta, ply);
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] qsearch returned: ${Number.isFinite(qScore) ? qScore.toFixed(2) : qScore}`);
+                    // Ensure qsearch returns finite
+                    return Number.isFinite(qScore) ? Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, qScore)) : 0;
                 } catch (qError) {
-                     console.error(`[Search] Error during qsearch call at ply ${ply}:`);
-                     console.error("QSearch Caught Error Object:", qError);
-                     if (qError instanceof Error) { console.error("QSearch Error Stack:", qError.stack); }
-                     searchCancelled = true;
-                     return 0;
+                    console.error(`[Search] Error during qsearch call at ply ${ply}:`, qError);
+                    if (qError instanceof Error) console.error("Stack:", qError.stack);
+                    searchCancelled = true;
+                    return 0; // Return neutral on error
                 }
             }
 
@@ -5238,122 +5766,439 @@
             const ttEntry = transpositionTable.get(currentHash);
             if (ttEntry && ttEntry.depth >= depth) {
                 let ttScore = ttEntry.score;
-                if (ttScore > MATE_SCORE_THRESHOLD) ttScore -= ply;
-                else if (ttScore < MATED_SCORE_THRESHOLD) ttScore += ply;
-                if (ttEntry.type === TT_ENTRY_TYPE.EXACT) return ttScore;
-                if (ttEntry.type === TT_ENTRY_TYPE.LOWER_BOUND) alpha = Math.max(alpha, ttScore);
-                if (ttEntry.type === TT_ENTRY_TYPE.UPPER_BOUND) beta = Math.min(beta, ttScore);
-                if (alpha >= beta) return ttScore;
+                // Adjust mate scores based on ply DIFFERENCE from stored state to current state
+                // (A mate found deeper (higher ply) is less valuable now)
+                if (ttScore > EVAL_MATE_SCORE_THRESHOLD) ttScore -= ply;
+                else if (ttScore < EVAL_MATED_SCORE_THRESHOLD) ttScore += ply;
+
+                // Clamp TT score after ply adjustment
+                ttScore = Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, ttScore));
+
+                if (ttEntry.type === TT_ENTRY_TYPE.EXACT) {
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] TT Exact Hit. Score: ${ttScore.toFixed(2)}`);
+                    return ttScore;
+                }
+                if (ttEntry.type === TT_ENTRY_TYPE.LOWER_BOUND) {
+                    alpha = Math.max(alpha, ttScore);
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] TT Lower Bound Hit. Score: ${ttScore.toFixed(2)}. New Alpha: ${alpha.toFixed(1)}`);
+                }
+                if (ttEntry.type === TT_ENTRY_TYPE.UPPER_BOUND) {
+                    beta = Math.min(beta, ttScore);
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] TT Upper Bound Hit. Score: ${ttScore.toFixed(2)}. New Beta: ${beta.toFixed(1)}`);
+                }
+                // Check for cutoff immediately after potentially updating alpha/beta from TT
+                if (alpha >= beta) {
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] TT Cutoff. Score: ${ttScore.toFixed(2)}`);
+                    // For cutoff, return the bound that caused it (beta for lower bound hit, alpha for upper bound hit)
+                    // Returning ttScore here is generally correct as it represents the bound value.
+                    return ttScore;
+                }
+                // Use the best move from TT entry if available
                 if (ttEntry.bestMove) ttBestMove = ttEntry.bestMove;
+            }
+
+            // --- Null Move Pruning (NMP) & Futility Pruning Prep ---
+            let staticEval = -Infinity; // Use -Infinity as default if eval fails
+            let didStaticEval = false;
+            // Check if static evaluation is needed for NMP or FP
+            const needsStaticEval = (depth <= FP_MAX_DEPTH) || (canNullMove && depth >= NMP_MIN_DEPTH && ply > 0 && !inCheck);
+            if (needsStaticEval) {
+                try {
+                    staticEval = evaluateBoard(nodeGameState.board, nodePlayer); // Eval relative to current node player
+                    // Clamp static eval as well
+                    staticEval = Number.isFinite(staticEval) ? Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, staticEval)) : EVAL_LOSE_SCORE;
+                    didStaticEval = true;
+                } catch (e) {
+                    console.error(`[Search Eval Err] P${ply} D${depth}:`, e);
+                    staticEval = EVAL_LOSE_SCORE; // Assign safe value on error
+                    didStaticEval = true; // Mark as attempted
+                }
+            }
+
+            // --- Null Move Pruning ---
+            // Conditions: Can do null move, deep enough, not at root, not in check, and static eval is high enough
+            const canTryNMP = canNullMove && depth >= NMP_MIN_DEPTH && ply > 0 && !inCheck && didStaticEval && staticEval >= beta;
+            if (canTryNMP) {
+                // Create the state resulting from a null move (only player and hash change)
+                const nullNextState = {
+                    board: nodeGameState.board, // Board doesn't change
+                    currentPlayer: nodePlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE, // Switch player
+                    gameOver: false, // Cannot end on null move
+                    winner: null,
+                    zobristHash: toggleTurnKey(nodeGameState.zobristHash) // Only toggle turn key
+                };
+                const reduction = NMP_REDUCTION; // Depth reduction for NMP search
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Trying Null Move Pruning (Reduction: ${reduction})`);
+
+                // Recursive call with reduced depth, switched player, and null move disallowed for the next ply.
+                // Use a null window search (-beta, -beta + 1) around beta.
+                const nullScore = -search(depth - 1 - reduction, nullNextState, -beta, -beta + 1, playerForMax, ply + 1, false, false);
+
+                if (searchCancelled) return 0; // Check cancellation after call returns
+
+                // If null move score is high enough (>= beta), it means the opponent likely has no good reply,
+                // so the current position is probably too good, and we can prune.
+                if (nullScore >= beta) {
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] Null Move Cutoff. Score: ${nullScore.toFixed(2)} >= Beta ${beta.toFixed(1)}`);
+                    // Store result in TT: This is a Lower Bound (score is AT LEAST beta)
+                     const existingEntry = transpositionTable.get(currentHash);
+                     // Store only if new entry is deeper or no entry exists
+                     if (!existingEntry || depth >= existingEntry.depth) {
+                         let scoreToStore = beta; // Use beta as the score for the lower bound
+                          // Adjust mate score before storing
+                         if (scoreToStore > EVAL_MATE_SCORE_THRESHOLD) scoreToStore += ply;
+                         else if (scoreToStore < EVAL_MATED_SCORE_THRESHOLD) scoreToStore -= ply;
+                         // Clamp score for storage
+                         scoreToStore = Math.max(EVAL_LOSE_SCORE - MAX_SEARCH_DEPTH*2, Math.min(EVAL_WIN_SCORE + MAX_SEARCH_DEPTH*2, scoreToStore));
+
+                         transpositionTable.set(currentHash, { depth: depth, score: scoreToStore, type: TT_ENTRY_TYPE.LOWER_BOUND, bestMove: null }); // No best move from null search
+                     }
+                    return beta; // Fail-hard beta cutoff
+                }
             }
 
             // --- Move Generation & Ordering ---
             let movesToConsider = [];
-            let initialPossibleMoves = [];
             try {
-                initialPossibleMoves = getAllValidMoves(nodeGameState.board, nodeGameState.currentPlayer, true);
-                if (initialPossibleMoves.length === 0) return MATED_SCORE_THRESHOLD + ply;
+                // *** Log before potentially failing call ***
+                if (enableTracing) console.log(`[Search P${ply} D${depth}] Calling getAllValidMoves...`);
+                const initialPossibleMoves = getAllValidMoves(nodeGameState.board, nodePlayer, true); // Use simulation flag
+                if (enableTracing) console.log(`[Search P${ply} D${depth}] getAllValidMoves returned ${initialPossibleMoves.length} moves.`);
 
-                movesToConsider = initialPossibleMoves;
-                const hungryMoves = initialPossibleMoves.filter(move => move && nodeGameState.board[move.from]?.isHungry);
-                if (hungryMoves.length > 0) {
-                    const attackingHungryMoves = hungryMoves.filter(move => move && !!nodeGameState.board[move.to]);
-                    if (attackingHungryMoves.length > 0) movesToConsider = attackingHungryMoves;
-                    else movesToConsider = hungryMoves;
+                if (initialPossibleMoves.length === 0) {
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] No legal moves found. Returning Mated score.`);
+                     // This means stalemate or checkmate for nodePlayer
+                    return EVAL_MATED_SCORE_THRESHOLD + ply; // Return loss score adjusted by ply
                 }
-                movesToConsider = getOrderedMoves(nodeGameState, ttBestMove, ply, movesToConsider);
 
-            } catch(e) {
-                console.error("[Search Error] Error getting/ordering moves at depth", depth, "ply", ply, e);
-                return MATED_SCORE_THRESHOLD + ply;
-            }
+                // Apply hungry filtering if necessary
+                movesToConsider = initialPossibleMoves; // Start with all valid moves
+                const hungryPieces = Object.entries(nodeGameState.board)
+                                        .filter(([coords, piece]) => piece?.player === nodePlayer && piece.isHungry)
+                                        .map(([coords, piece]) => coords);
 
-            // --- Recursive Exploration ---
-            let bestScore = -Infinity;
-            let bestMoveFound = null;
-            let originalAlpha = alpha;
-
-            for (const move of movesToConsider) {
-                if (!move || !move.from || !move.to) continue;
-
-                const stateForSim = cloneGameState(nodeGameState);
-                const simResult = simulateMove(stateForSim, move);
-                if (!simResult || !simResult.nextState) continue;
-                const { nextState } = simResult;
-
-                const score = -search(depth - 1, nextState, -beta, -alpha, playerForMax, ply + 1);
-
-                if (searchCancelled) return 0; // Check immediately after recursive call
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestMoveFound = { from: move.from, to: move.to };
-                }
-                alpha = Math.max(alpha, bestScore);
-
-                const isCapture = !!nodeGameState.board[move.to];
-
-                if (alpha >= beta) { // Beta Cutoff
-                    if (!isCapture) {
-                        addKillerMove(ply, move);
-                        const piece = nodeGameState.board[move.from];
-                        updateHistoryScore(piece, move.to, depth * depth);
-                    }
-                    break;
-                } else if (score > originalAlpha) { // Alpha Improved
-                     if (!isCapture) {
-                         const piece = nodeGameState.board[move.from];
-                         updateHistoryScore(piece, move.to, depth * depth);
+                if (hungryPieces.length > 0) {
+                    const attackingHungryMoves = movesToConsider.filter(move =>
+                         move && hungryPieces.includes(move.from) && !!nodeGameState.board[move.to] // Is a capture by a hungry piece
+                     );
+                     if (attackingHungryMoves.length > 0) {
+                         movesToConsider = attackingHungryMoves; // Must make a capture if possible
+                         if (enableTracing) console.log(`[Trace P${ply} D${depth}] Filtered to ${movesToConsider.length} attacking hungry moves.`);
+                     } else {
+                         // If no attacking moves, must move *any* hungry piece (if any exist)
+                         const nonAttackingHungryMoves = movesToConsider.filter(move => move && hungryPieces.includes(move.from));
+                         // Only filter if there ARE hungry pieces but NO attacking moves for them
+                         if (nonAttackingHungryMoves.length > 0) {
+                            movesToConsider = nonAttackingHungryMoves;
+                            if (enableTracing) console.log(`[Trace P${ply} D${depth}] Filtered to ${movesToConsider.length} non-attacking hungry moves.`);
+                         }
+                         // If hungryPieces > 0 but nonAttackingHungryMoves.length === 0, it means the hungry pieces are trapped/blocked - leads to loss via starvation -> Mated score
+                         else {
+                              if (enableTracing) console.log(`[Trace P${ply} D${depth}] Hungry pieces exist but have no valid moves. Returning Mated score.`);
+                              return EVAL_MATED_SCORE_THRESHOLD + ply;
+                         }
                      }
                 }
+                 // Re-check if filtering left no moves (e.g., only hungry piece is trapped/blocked)
+                 if (movesToConsider.length === 0 && initialPossibleMoves.length > 0) {
+                     if (enableTracing) console.log(`[Trace P${ply} D${depth}] No valid moves after hungry filtering. Returning Mated score.`);
+                     // Should be caught by the check above, but as safety:
+                     return EVAL_MATED_SCORE_THRESHOLD + ply;
+                 }
+
+                // *** Log before potentially failing call ***
+                if (enableTracing) console.log(`[Search P${ply} D${depth}] After filtering, ${movesToConsider.length} moves. Calling getOrderedMoves...`);
+                movesToConsider = getOrderedMoves(nodeGameState, ttBestMove, ply, movesToConsider);
+                if (enableTracing) console.log(`[Search P${ply} D${depth}] getOrderedMoves finished.`);
+
+
+            // --- UPDATED CATCH BLOCK ---
+            } catch (e) {
+                console.error(`[Search Error] Error getting/filtering/ordering moves at depth ${depth} ply ${ply}`, e);
+                // Add stack trace if available
+                if (e instanceof Error && e.stack) {
+                    console.error("Stack Trace:", e.stack);
+                }
+                // Log the board state that caused the error
+                try {
+                    console.error("Board State at Error:", getBoardStateString(nodeGameState.board));
+                } catch (logError) {
+                    console.error("Could not log board state during search error.");
+                }
+                // Return loss score
+                // Ensure threshold constant exists or use direct calculation
+                const matedThreshold = typeof EVAL_MATED_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATED_SCORE_THRESHOLD : (EVAL_LOSE_SCORE / 1.1);
+                return matedThreshold + ply;
             }
-             if (searchCancelled) return 0;
+            // --- END UPDATED CATCH BLOCK ---
 
-            // --- Transposition Table Store ---
-            let finalScoreForStorage = bestScore;
-            if (finalScoreForStorage > MATE_SCORE_THRESHOLD) finalScoreForStorage += ply;
-            else if (finalScoreForStorage < MATED_SCORE_THRESHOLD) finalScoreForStorage -= ply;
 
+            // --- Search Moves Loop ---
+            let bestScore = -Infinity; // Start with lowest possible score for maximizing player
+            let bestMoveFound = null;
+            let originalAlpha = alpha; // Store initial alpha for TT type determination
+            let movesSearched = 0;
+
+            for (const move of movesToConsider) {
+                // Basic safety check on move object
+                if (!move || !move.from || !move.to) {
+                     console.warn(`[Search Warn P${ply} D${depth}] Skipping invalid move object in loop:`, move);
+                     continue;
+                }
+                movesSearched++;
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Considering move ${movesSearched}/${movesToConsider.length}: ${move.from}->${move.to}`);
+
+                const isCapture = !!nodeGameState.board[move.to];
+                const piece = nodeGameState.board[move.from]; // Piece being moved
+                // Check if piece exists (essential for den attack check)
+                if (!piece) {
+                    console.warn(`[Search Warn P${ply} D${depth}] Piece not found at ${move.from} for move ${move.from}->${move.to}. Skipping.`);
+                    continue;
+                }
+                // Check if it's a winning move to the den (and piece isn't hungry)
+                const isDenAttack = move.to === (nodePlayer === PLAYERS.ORANGE ? DENS.yellow : DENS.orange) && !piece.isHungry;
+                const isNoisy = isCapture || isDenAttack; // Define noisy moves (captures or direct den attacks)
+
+                // --- Futility Pruning (FP) ---
+                // Consider pruning quiet moves at shallow depths if static eval is low
+                if (!isNoisy && !inCheck && depth <= FP_MAX_DEPTH) {
+                    // Ensure static eval was successfully calculated earlier
+                    if (!didStaticEval) { // Recalculate if needed (should be rare)
+                        try {
+                            staticEval = evaluateBoard(nodeGameState.board, nodePlayer);
+                            staticEval = Number.isFinite(staticEval) ? Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, staticEval)) : EVAL_LOSE_SCORE;
+                            didStaticEval = true;
+                        } catch (e) { staticEval = EVAL_LOSE_SCORE; didStaticEval = true; }
+                    }
+                    const futilityMargin = FP_MARGIN_PER_DEPTH * depth; // Calculate margin
+                    // If static eval + margin is still below alpha, likely won't improve score enough
+                    if (didStaticEval && staticEval + futilityMargin <= alpha) {
+                        if (enableTracing) console.log(`[Trace P${ply} D${depth}] Futility Pruning move ${move.from}->${move.to}. Eval ${staticEval.toFixed(1)} + Margin ${futilityMargin} <= Alpha ${alpha.toFixed(1)}`);
+                        continue; // Skip this quiet move
+                    }
+                }
+
+                // --- Simulate Move ---
+                const stateForSim = cloneGameState(nodeGameState); // Clone state BEFORE simulating
+                const simResult = simulateMove(stateForSim, move);
+                // Check if simulation was successful
+                if (!simResult || !simResult.nextState) {
+                    if (enableTracing) console.warn(`[Trace P${ply} D${depth}] Simulation failed for ${move.from}->${move.to}`);
+                    continue; // Skip move if simulation fails
+                }
+                const { nextState } = simResult; // Get the state AFTER the move
+
+                // --- Recursive Search Call ---
+                let score; // Score returned from the recursive call
+                let reduction = 0; // Depth reduction for LMR
+
+                // --- Late Move Reductions (LMR) ---
+                // Apply reduction for quiet moves searched later in the order at sufficient depth
+                 if (depth >= LMR_MIN_DEPTH && movesSearched > LMR_MOVE_COUNT_THRESHOLD && !isNoisy && !inCheck) {
+                     reduction = LMR_BASE_REDUCTION;
+                     // Optional: Add more sophisticated reduction logic here if needed
+                     // reduction = Math.min(reduction, depth - 2); // Ensure we don't reduce too much
+                     if (enableTracing) console.log(`[Trace P${ply} D${depth}] Applying LMR (Reduction: ${reduction}) to move ${move.from}->${move.to}`);
+                 }
+
+                // --- Principal Variation Search (PVS) / Null Window Search Logic ---
+                if (movesSearched === 1) { // First move: Assume it's good, search with full Alpha-Beta window
+                    score = -search(depth - 1 - reduction, nextState, -beta, -alpha, playerForMax, ply + 1, true, false);
+                } else { // Subsequent moves: Assume they won't raise alpha, try a faster Null Window search first
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] Null Window Search for ${move.from}->${move.to} (Window: [${(-alpha - 1).toFixed(1)}, ${(-alpha).toFixed(1)}])`);
+                    // Search with window [-alpha-1, -alpha]
+                    score = -search(depth - 1 - reduction, nextState, -alpha - 1, -alpha, playerForMax, ply + 1, true, false);
+
+                    // If the null window search failed low (score <= alpha), the assumption was correct.
+                    // If it failed high (score >= -alpha, which means score > alpha),
+                    // the move might be better than current alpha, so we need a re-search with the full window.
+                    if (!searchCancelled && score > alpha && score < beta) { // Check score is within (alpha, beta)
+                        if (enableTracing) console.log(`[Trace P${ply} D${depth}] Re-searching ${move.from}->${move.to} with Full Window [${(-beta).toFixed(1)}, ${(-alpha).toFixed(1)}]`);
+                        // Re-search with the original full window [-beta, -alpha]
+                        score = -search(depth - 1 - reduction, nextState, -beta, -alpha, playerForMax, ply + 1, true, false);
+                    }
+                }
+
+                // --- LMR Re-search ---
+                // If LMR was applied AND the score improved alpha (even after potential PVS re-search),
+                // it might be worth re-searching at the full depth without reduction.
+                 if (reduction > 0 && score > alpha && !searchCancelled) {
+                     if (enableTracing) console.log(`[Trace P${ply} D${depth}] LMR Re-searching ${move.from}->${move.to} at full depth (D-${depth-1})`);
+                     // Re-search without reduction, using full window
+                     score = -search(depth - 1, nextState, -beta, -alpha, playerForMax, ply + 1, true, false);
+                 }
+
+                // --- Check Cancellation & Process Score ---
+                if (searchCancelled) return 0; // Check cancellation immediately after recursive calls
+
+                // Ensure score is finite before proceeding
+                if (!Number.isFinite(score)) {
+                    console.warn(`[Search Warn P${ply} D${depth}] Score became non-finite (${score}) for move ${move.from}->${move.to}. Resetting to loss score.`);
+                    // Use the defined threshold constant or derived value
+                    const matedThreshold = typeof EVAL_MATED_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATED_SCORE_THRESHOLD : (EVAL_LOSE_SCORE / 1.1);
+                    score = matedThreshold + ply + 1; // Assign a distinct losing score
+                }
+
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Score for ${move.from}->${move.to} (after negamax/re-search): ${score.toFixed(2)}`);
+
+                // --- Update Best Score & Alpha ---
+                // Keep track of the best score found so far at this node
+                if (score > bestScore) {
+                    // Log the improvement if tracing
+                    if (enableTracing) {
+                         const previousBest = bestScore === -Infinity ? "-Infinity" : bestScore.toFixed(2);
+                         console.log(`[Trace P${ply} D${depth}] New best score: ${score.toFixed(2)} (was ${previousBest}) for move ${move.from}->${move.to}`);
+                    }
+                    bestScore = score; // Update best score for this node
+                    bestMoveFound = { from: move.from, to: move.to }; // Update best move for this node
+                }
+
+                // Update alpha (the best score guaranteed for the maximizing player up to this point)
+                alpha = Math.max(alpha, bestScore);
+
+                // --- Beta Cutoff ---
+                // If alpha >= beta, the minimizing player (opponent in previous ply) already has a better option,
+                // so we don't need to explore further moves at this node.
+                if (alpha >= beta) {
+                    if (enableTracing) console.log(`[Trace P${ply} D${depth}] Beta Cutoff. Alpha ${alpha.toFixed(1)} >= Beta ${beta.toFixed(1)}. Cutoff Move: ${move.from}->${move.to}`);
+                    // Store Killer Move: If a quiet move causes a beta cutoff, it's often effective.
+                    if (!isCapture) {
+                        addKillerMove(ply, move);
+                        // Update History Heuristic: Give bonus to quiet moves causing cutoffs
+                        if (piece) updateHistoryScore(piece, move.to, depth * depth);
+                    }
+                    // Store TT Entry: This node provides a Lower Bound (score is AT LEAST beta)
+                     const existingEntry = transpositionTable.get(currentHash);
+                     if (!existingEntry || depth >= existingEntry.depth) {
+                         let scoreToStore = beta; // Use beta as the score for the lower bound
+                         // Adjust mate score before storing
+                         if (scoreToStore > EVAL_MATE_SCORE_THRESHOLD) scoreToStore += ply;
+                         else if (scoreToStore < EVAL_MATED_SCORE_THRESHOLD) scoreToStore -= ply;
+                         // Clamp score for storage
+                         scoreToStore = Math.max(EVAL_LOSE_SCORE - MAX_SEARCH_DEPTH*2, Math.min(EVAL_WIN_SCORE + MAX_SEARCH_DEPTH*2, scoreToStore));
+
+                         transpositionTable.set(currentHash, { depth: depth, score: scoreToStore, type: TT_ENTRY_TYPE.LOWER_BOUND, bestMove: move }); // Store the move that caused cutoff
+                     }
+                    return beta; // Return beta (fail-hard)
+                }
+                 // --- History Heuristic Update for moves improving alpha ---
+                 // If the move improved alpha but didn't cause a beta cutoff, boost its history score.
+                 else if (score > originalAlpha) { // Check if alpha was actually raised
+                     if (!isCapture && piece) {
+                         updateHistoryScore(piece, move.to, depth * depth);
+                     }
+                 }
+            } // End of move loop
+
+            // --- After All Moves Searched ---
+            if (searchCancelled) return 0; // Check cancellation again
+
+            // If bestScore is still -Infinity, it means no move improved the score.
+            // This implies either all moves were pruned (unlikely if moves existed)
+            // or all moves led to a state evaluated as -Infinity (likely a forced mate).
+            if (bestScore === -Infinity) {
+                 if (enableTracing) console.log(`[Trace P${ply} D${depth}] All moves resulted in -Infinity score or were pruned. Returning Mated score.`);
+                 // Ensure threshold constant exists or use direct calculation
+                 const matedThreshold = typeof EVAL_MATED_SCORE_THRESHOLD !== 'undefined' ? EVAL_MATED_SCORE_THRESHOLD : (EVAL_LOSE_SCORE / 1.1);
+                 bestScore = matedThreshold + ply; // Return adjusted loss score
+            }
+
+            // --- Determine Final TT Entry Type & Store ---
             let entryType;
-            if (bestScore <= originalAlpha) entryType = TT_ENTRY_TYPE.UPPER_BOUND;
-            else if (alpha >= beta) entryType = TT_ENTRY_TYPE.LOWER_BOUND;
-            else entryType = TT_ENTRY_TYPE.EXACT;
+            if (bestScore <= originalAlpha) {
+                // If bestScore is <= originalAlpha, none of the moves were better than what was already known (alpha).
+                // This means the true score is AT MOST bestScore (which is <= originalAlpha).
+                entryType = TT_ENTRY_TYPE.UPPER_BOUND;
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Final best score ${bestScore.toFixed(2)} <= originalAlpha ${originalAlpha.toFixed(1)}. Final Type: UPPER_BOUND.`);
+            } else {
+                // If bestScore > originalAlpha (and no beta cutoff occurred), we found the exact score for this node.
+                entryType = TT_ENTRY_TYPE.EXACT;
+                if (enableTracing) console.log(`[Trace P${ply} D${depth}] Final best score ${bestScore.toFixed(2)} > originalAlpha ${originalAlpha.toFixed(1)}. Final Type: EXACT.`);
+            }
 
+            // Adjust score for mate distance *before* storing in TT
+            let scoreForStorage = bestScore;
+            if (scoreForStorage > EVAL_MATE_SCORE_THRESHOLD) scoreForStorage += ply; // Closer mate = lower ply = higher adjusted score
+            else if (scoreForStorage < EVAL_MATED_SCORE_THRESHOLD) scoreForStorage -= ply; // Closer mate loss = higher ply = lower adjusted score
+
+            // Clamp score for storage to prevent extreme values
+            scoreForStorage = Math.max(EVAL_LOSE_SCORE - MAX_SEARCH_DEPTH * 2, Math.min(EVAL_WIN_SCORE + MAX_SEARCH_DEPTH * 2, scoreForStorage));
+            // Final safety check for finite number before storing
+            if (!Number.isFinite(scoreForStorage)) {
+                console.warn(`[!!! TT Store Warn P${ply} D${depth}] scoreForStorage became non-finite (${scoreForStorage}). Resetting to 0.`);
+                scoreForStorage = 0;
+            }
+
+            // Store results in Transposition Table if entry is new or deeper
             const existingEntry = transpositionTable.get(currentHash);
             if (!existingEntry || depth >= existingEntry.depth) {
                 transpositionTable.set(currentHash, {
-                    depth: depth, score: finalScoreForStorage, type: entryType, bestMove: bestMoveFound
+                    depth: depth,
+                    score: scoreForStorage,
+                    type: entryType,
+                    bestMove: bestMoveFound // Store the best move found *at this node*
                 });
             }
 
-            return bestScore;
+            // --- Return the final best score found for this node ---
+            // Ensure the returned score is finite and reasonably bounded before returning.
+            // Don't adjust for ply here; the caller or TT lookup will handle ply adjustments.
+            bestScore = Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, bestScore));
+            if (!Number.isFinite(bestScore)){
+                console.warn(`[!!! Search Return Warn P${ply} D${depth}] bestScore became non-finite (${bestScore}) before return. Resetting to 0.`);
+                bestScore = 0;
+            }
+
+            if (enableTracing) {
+                console.log(`[Trace P${ply} D${depth}] Returning final node score: ${bestScore.toFixed(2)}`);
+            }
+
+            return bestScore; // Return the best score found at this node
         }
 
         /**
          * Generates a list of all valid moves for a given player in a specific board state.
          * @param {object} boardState - The board state object ({ coords: pieceData }).
          * @param {string} player - The player ('orange' or 'yellow') whose moves to find.
-         * @param {boolean} [isSimulation=false] - Flag to pass down to isValidMove. // NEW PARAMETER
+         * @param {boolean} [isSimulation=false] - Flag to pass down to isValidMove.
          * @returns {Array<object>} An array of valid move objects [{ from, to }, ...].
          */
         function getAllValidMoves(boardState, player, isSimulation = false) { // ADD isSimulation
             const validMoves = [];
-            if (!boardState) return []; // Safety check
+            // --- Added Board State Check ---
+            if (!boardState || typeof boardState !== 'object') {
+                console.error("[getAllValidMoves Error] Invalid boardState received:", boardState);
+                return []; // Return empty list if board is invalid
+            }
+            // --- End Added Check ---
 
             // Iterate through all squares on the board
             for (const fromCoords in boardState) {
+                // Use hasOwnProperty to avoid iterating over prototype properties
+                if (!Object.prototype.hasOwnProperty.call(boardState, fromCoords)) continue;
+
                 const piece = boardState[fromCoords];
-                // Check if the piece belongs to the specified player
-                if (piece?.player === player) {
-                    // Get potential destinations (geometric moves)
-                    const destinations = getPotentialMoveDestinations(fromCoords, piece);
-                    // Validate each potential destination
-                    for (const toCoords of destinations) {
-                        // Use isValidMove with a copy of piece data and pass isSimulation flag
-                        if (isValidMove(fromCoords, toCoords, { ...piece }, boardState, isSimulation).valid) { // Pass isSimulation
-                            validMoves.push({ from: fromCoords, to: toCoords });
+                // Check if the piece belongs to the specified player and has valid basic properties
+                if (piece && piece.player === player && typeof piece.rank === 'number' && piece.rank >= 1 && piece.rank <= 8) {
+                    try { // --- Added Try-Catch around inner logic ---
+                        // Get potential destinations (geometric moves)
+                        const destinations = getPotentialMoveDestinations(fromCoords, piece);
+                        // Validate each potential destination
+                        for (const toCoords of destinations) {
+                            // Use isValidMove with a copy of piece data and pass isSimulation flag
+                            // Added check for toCoords validity as well
+                            if (toCoords && isValidMove(fromCoords, toCoords, { ...piece }, boardState, isSimulation).valid) {
+                                validMoves.push({ from: fromCoords, to: toCoords });
+                            }
                         }
+                    } catch (innerError) {
+                         console.error(`[getAllValidMoves Error] Processing piece ${piece.rank}@${fromCoords} for player ${player}:`, innerError);
+                         if (innerError instanceof Error) console.error("Stack:", innerError.stack);
+                         // Continue checking other pieces even if one fails, don't stop the whole process
                     }
+                } else if (piece && piece.player === player) {
+                     // Log if a piece for the player is skipped due to invalid data
+                     console.warn(`[getAllValidMoves Warn] Skipping piece at ${fromCoords} for player ${player} due to invalid data:`, piece);
                 }
             }
             return validMoves;
@@ -5497,248 +6342,192 @@
         }
 
         /**
-         * Evaluates the static board state from the perspective of the AI player (playerForMax).
-         * Incorporates material, mobility, positional factors (advancement, river, center),
-         * den proximity/threats, trap safety/danger, piece safety/threats, and hunger penalties.
-         * Includes specific logic for Clesto rules like water movement and traps.
-         * Returns a numerical score indicating the board state's favorability for playerForMax.
-         * Higher score is better for playerForMax.
+         * Enhanced Static Evaluation Function (V6 - Stronger Threats, Scaled Den, Mobility).
+         * Evaluates the board from the perspective of playerForMax.
+         * Prioritizes: Win/Loss, Immediate Trap Danger, Material, Piece Safety,
+         * Threat Generation, Scaled Den Proximity, Mobility, Minor Positional.
          *
          * @param {object} boardState - The board state object ({ coords: pieceData }).
          * @param {string} playerForMax - The player considered "maximizing" (AI, usually Yellow).
-         * @param {object|null} [originalPieceIfMove=null] - Deprecated/Unused parameter, kept for signature consistency if needed elsewhere initially.
-         * @returns {number} A numerical score representing the board state's favorability.
+         * @returns {number} A numerical score. Higher is better for playerForMax. Clamped within bounds.
          */
-        function evaluateBoard(boardState, playerForMax, originalPieceIfMove = null) { // Keep original signature for now
+        function evaluateBoard(boardState, playerForMax) {
             let score = 0;
+            // Basic validation
             if (!boardState || typeof boardState !== 'object') {
-                console.error("[Eval Error - Initial] Invalid boardState provided:", boardState);
-                return playerForMax === PLAYERS.YELLOW ? AI_LOSE_SCORE : AI_WIN_SCORE; // Assign loss on error
+                console.error("[Eval Error - V6] Invalid boardState provided.");
+                return EVAL_LOSE_SCORE + 10;
             }
 
             const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
-            const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow; // AI's own den
+            const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow; // Our den
             const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange; // Opponent's den
-            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange; // Traps near AI's den (affect AI)
-            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow; // Traps near Opp's den (affect Opp)
+            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange; // Traps near Opponent's den (affect playerForMax)
+            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow; // Traps near Our den (affect opponent)
 
-            let maxMaterial = 0; let minMaterial = 0;
-            let maxMoves = 0; let minMoves = 0;
-            let maxHungryCount = 0; let minHungryCount = 0;
-            let maxPieceCount = 0; let minPieceCount = 0;
-            const piecesData = { [playerForMax]: [], [opponent]: [] }; // Store piece data for easier access later
+            let maxMaterial = 0;
+            let minMaterial = 0;
+            let maxPieceCount = 0;
+            let minPieceCount = 0;
 
-            // --- 1. Mobility Calculation ---
-            try {
-                maxMoves = getAllValidMoves(boardState, playerForMax, true).length;
-                minMoves = getAllValidMoves(boardState, opponent, true).length;
-                score += maxMoves * AI_MOBILITY_BONUS;
-                score -= minMoves * AI_OPP_MOBILITY_PENALTY;
-            } catch (e) {
-                console.error("[Eval Error - Mobility] Error getting valid moves:", e);
-                // Optionally return a neutral score or penalty if mobility calc fails
-            }
+            // Store piece info for easier access
+            const piecesData = {
+                [playerForMax]: [],
+                [opponent]: []
+            };
+             let maxMovesCount = 0; // For mobility
+             let minMovesCount = 0; // For mobility
 
-            // --- 2. Iterate through Pieces for Material, Position, Threats, etc. ---
+            // --- 1. Collect Piece Data & Check for Immediate Den Wins ---
             for (const coords in boardState) {
                 if (!Object.prototype.hasOwnProperty.call(boardState, coords)) continue;
-
                 const piece = boardState[coords];
-                if (!piece) continue;
+                if (!piece || typeof piece.rank === 'undefined') continue;
+
+                // Immediate Den Win Check
+                if (coords === minDen && piece.player === playerForMax && !piece.isHungry) return EVAL_WIN_SCORE;
+                if (coords === maxDen && piece.player === opponent && !piece.isHungry) return EVAL_LOSE_SCORE;
 
                 const rc = getRowCol(coords);
-                if (!rc) { console.warn(`[Eval Warn] Skipping piece at invalid coords: ${coords}`); continue; }
+                if (!rc) continue;
 
-                const pieceValue = AI_PIECE_VALUES[piece.rank] || 0;
-                const abilities = SPECIAL_ABILITIES[piece.rank] || {};
-                const isOnWater = WATER_SQUARES.has(coords);
-                const isOnMaxTrap = maxTraps.has(coords); // Is AI piece on a trap dangerous to it
-                const isOnMinTrap = minTraps.has(coords); // Is Opponent piece on a trap dangerous to it
+                piecesData[piece.player].push({ piece: { ...piece }, coords: coords, rc: rc });
 
-                // Store data for later checks (e.g., win threats)
-                piecesData[piece.player].push({ ...piece, coords: coords, rc: rc });
-
+                const pieceValue = EVAL_PIECE_VALUES[piece.rank] || 0;
                 if (piece.player === playerForMax) {
-                    // --- AI Player's Piece ---
                     maxPieceCount++;
                     maxMaterial += pieceValue;
-                    if (piece.isHungry) maxHungryCount++;
-
-                    // A) Positional Bonuses
-                    const rowsAdvanced = playerForMax === PLAYERS.ORANGE ? (ROWS - 1 - rc.row) : rc.row;
-                    score += rowsAdvanced * AI_ADVANCE_ROW_BONUS;
-
-                    const isPastRiver = (playerForMax === PLAYERS.ORANGE && rc.row < 3) || (playerForMax === PLAYERS.YELLOW && rc.row > 5);
-                    if (isPastRiver) score += AI_RIVER_CROSS_BONUS;
-
-                    const isCenterCol = rc.col >= 2 && rc.col <= 4;
-                    if (isCenterCol) {
-                        score += AI_CENTER_COL_BONUS;
-                        if (isPastRiver) score += AI_CENTER_CONTROL_BONUS;
-                    }
-
-                    // B) Den Proximity (Opponent's Den)
-                    const distToMinDen = Math.abs(rc.row - getRowCol(minDen).row) + Math.abs(rc.col - getRowCol(minDen).col);
-                    if (distToMinDen === 1) {
-                        score += AI_DEN_PROXIMITY_BONUS_1;
-                        // Check if can actually enter (not hungry, valid move)
-                        if (!piece.isHungry && isValidMove(coords, minDen, piece, boardState, true).valid) {
-                            score += AI_WIN_ADJACENT_BONUS;
-                        }
-                    } else if (distToMinDen === 2) {
-                        score += AI_DEN_PROXIMITY_BONUS_2;
-                    }
-
-                    // C) Trap Danger (AI piece on a trap near its own den)
-                    if (isOnMaxTrap) {
-                        let penalty = AI_TRAP_DANGER_PENALTY;
-                        // Check if trap is guarded
-                        const adjacentCoords = getAdjacentCoords(coords);
-                        for (const adj of adjacentCoords) {
-                            const adjPiece = boardState[adj];
-                            // If opponent piece can attack AI piece ON the trap
-                            if (adjPiece?.player === opponent && isValidMove(adj, coords, adjPiece, boardState, true).valid) {
-                                penalty *= AI_GUARDED_TRAP_MULT;
-                                break; // Apply multiplied penalty once
-                            }
-                        }
-                        score += penalty;
-                    }
-
-                    // D) Near Opponent Traps (Offensive pressure)
-                    const adjacentToCoords = getAdjacentCoords(coords);
-                    if (adjacentToCoords.some(adj => minTraps.has(adj))) {
-                        score += AI_NEAR_OPP_TRAP_BONUS;
-                    }
-
-                    // E) Water Control
-                    if (isOnWater && (abilities.swims)) { // Rank 1 (Rat) or 3 (Dog)
-                        score += AI_WATER_CONTROL_BONUS;
-                    }
-
-                    // F) Wolf/Cat Specifics
-                    const isWolfOrCat = piece.rank === 4 || piece.rank === 2;
-                    const totalPieces = Object.keys(boardState).length; // Recalculate or pass in? For now, recalc.
-                    const isEarlyOrMidGame = totalPieces > 8;
-                    if (isWolfOrCat) {
-                        const isInDefensiveZone = (playerForMax === PLAYERS.ORANGE && rc.row >= 6) || (playerForMax === PLAYERS.YELLOW && rc.row <= 2);
-                        score += rowsAdvanced * AI_WOLF_CAT_ADVANCE_PENALTY;
-                        if (isEarlyOrMidGame && isInDefensiveZone) {
-                            score += AI_WOLF_CAT_DEFENSE_BONUS;
-                        }
-                        // Blocking penalty - check if on river bank in jump cols
-                        const isOnRiverBank = (playerForMax === PLAYERS.ORANGE && rc.row === 5) || (playerForMax === PLAYERS.YELLOW && rc.row === 3);
-                        const isJumpCol = rc.col === 1 || rc.col === 2 || rc.col === 4 || rc.col === 5;
-                        if(isOnRiverBank && isJumpCol) {
-                            // Simple check: is there a friendly jumper further back? More complex checks needed for real accuracy.
-                            // For now, apply a small penalty regardless if own jumper exists? Let's apply if ANY friendly jumper exists.
-                            const friendlyJumperExists = piecesData[playerForMax].some(p => p.rank === 6 || p.rank === 7 || p.rank === 5);
-                            if (friendlyJumperExists) {
-                                score += AI_BLOCKING_JUMPER_PENALTY;
-                            }
-                        }
-                    }
-
                 } else {
-                    // --- Opponent's Piece ---
                     minPieceCount++;
                     minMaterial += pieceValue;
-                    if (piece.isHungry) minHungryCount++;
-
-                    // A) Den Proximity (AI's Den)
-                    const distToMaxDen = Math.abs(rc.row - getRowCol(maxDen).row) + Math.abs(rc.col - getRowCol(maxDen).col);
-                    if (distToMaxDen <= 2) { // Penalty if opponent is close
-                        score += AI_OWN_DEN_NEAR_PENALTY * (3 - distToMaxDen); // Higher penalty if closer
-                        // Check immediate threat
-                        if (distToMaxDen === 1 && !piece.isHungry && isValidMove(coords, maxDen, piece, boardState, true).valid) {
-                            score += AI_IMMEDIATE_WIN_THREAT_PENALTY;
-                        }
-                    }
-
-                     // B) Opponent on Trap (Beneficial for AI) - Simplified bonus
-                     if (isOnMinTrap) {
-                         score -= AI_TRAP_DANGER_PENALTY / 2; // Give AI points if opponent is trapped
-                     }
                 }
             }
 
-            // --- 3. Post-Iteration Calculations & Checks ---
+            // --- 2. Check for Win/Loss by Elimination ---
+            if (maxPieceCount === 0) return EVAL_LOSE_SCORE;
+            if (minPieceCount === 0) return EVAL_WIN_SCORE;
 
-            // Material Score
-            score += (maxMaterial - minMaterial) * AI_MATERIAL_MULT;
+            // --- 3. Calculate Base Material Score ---
+            score += (maxMaterial - minMaterial) * EVAL_MATERIAL_MULT;
 
-            // Hunger Penalty
-            score += maxHungryCount * AI_HUNGER_PENALTY;
-            // Optional: Bonus for opponent being hungry?
-            // score -= minHungryCount * AI_HUNGER_PENALTY / 2; // Example: half penalty value as bonus
+            // --- 4. Evaluate Individual Piece Bonuses/Penalties (Traps, Den, Positional) ---
+            for (const player of [playerForMax, opponent]) {
+                const sign = (player === playerForMax) ? 1 : -1;
+                const targetDen = (player === playerForMax) ? minDen : maxDen;
+                const targetDenRC = getRowCol(targetDen);
+                const opponentTrapsForThisPlayer = (player === playerForMax) ? minTraps : maxTraps;
 
-            // Piece Safety / Threats (Simple check after iterating all pieces)
-            let maxThreatenedValue = 0;
-            let minThreatenedValue = 0;
-            let maxThreateningScore = 0;
-            let minThreateningScore = 0;
+                for (const item of piecesData[player]) {
+                    const { piece, coords, rc } = item;
+                    const rank = piece.rank;
+                    const pieceValue = EVAL_PIECE_VALUES[rank] || 0; // Get piece value for scaling
+                    let isDoomedOnTrap = false;
 
-            for (const pieceData of piecesData[playerForMax]) {
-                 const adjacent = getAdjacentCoords(pieceData.coords);
-                 let isThreatened = false;
-                 for (const adj of adjacent) {
-                     const adjPiece = boardState[adj];
-                     if (adjPiece?.player === opponent && isValidMove(adj, pieceData.coords, adjPiece, boardState, true).valid) {
-                         isThreatened = true; break;
-                     }
-                 }
-                 if (isThreatened) {
-                     // score += AI_PIECE_THREATENED_PENALTY; // Apply flat penalty
-                     maxThreatenedValue += AI_PIECE_VALUES[pieceData.rank] || 10; // Sum value of threatened pieces
-                 }
+                    // 4a. CRITICAL Trap Check (only check playerForMax's pieces)
+                    if (player === playerForMax) {
+                        const isOnOpponentTrap = opponentTrapsForThisPlayer.has(coords);
+                        if (isOnOpponentTrap) {
+                            let isImmediatelyCapturableOnTrap = false;
+                            for (const oppItem of piecesData[opponent]) {
+                                if (isValidMove(oppItem.coords, coords, oppItem.piece, boardState, true).valid) {
+                                    const attackerRank = oppItem.piece.rank;
+                                    const isNormalRatVsElephant = (attackerRank === 1 && rank === 8 && !WATER_SQUARES.has(oppItem.coords));
+                                    if (attackerRank < rank && !isNormalRatVsElephant) {
+                                         isImmediatelyCapturableOnTrap = true;
+                                         break;
+                                    }
+                                }
+                            }
+                            if (isImmediatelyCapturableOnTrap) {
+                                score += EVAL_IMMEDIATE_TRAP_DOOM_PENALTY;
+                                isDoomedOnTrap = true;
+                                continue;
+                            }
+                        }
+                    }
+                    if (isDoomedOnTrap) continue;
 
-                 // Check if this piece threatens opponent
-                 for(const move of getAllValidMoves(boardState, playerForMax, true).filter(m => m.from === pieceData.coords)) {
-                     if(boardState[move.to]?.player === opponent) {
-                         maxThreateningScore += AI_THREATENING_BONUS;
-                         break; // Add bonus once per threatening piece
-                     }
-                 }
+                    // 4b. Scaled Den Proximity
+                    if (targetDenRC) {
+                        const dist = Math.abs(rc.row - targetDenRC.row) + Math.abs(rc.col - targetDenRC.col);
+                        let denBonus = 0;
+                        // Calculate base bonus/penalty
+                        if (dist === 1 && !piece.isHungry) {
+                            denBonus = (player === playerForMax) ? EVAL_DEN_ADJACENT_BASE_BONUS : EVAL_OPP_DEN_ADJACENT_BASE_PENALTY;
+                        } else if (dist === 2 && !piece.isHungry) {
+                             denBonus = (player === playerForMax) ? EVAL_DEN_NEAR_BASE_BONUS : EVAL_OPP_DEN_NEAR_BASE_PENALTY;
+                        }
+                        // Scale by rank (using piece value as proxy for importance)
+                        if (denBonus !== 0) {
+                             const scaledBonus = denBonus * (1 + (DEN_PROXIMITY_RANK_SCALE_FACTOR * (pieceValue / 100))); // Scale based on piece value (adjust divisor 100 if needed)
+                             score += sign * scaledBonus;
+                             // console.log(`[Eval Den Scale] P:${player} ${rank}@${coords} D:${dist} Base:${denBonus} Scaled:${sign * scaledBonus}`);
+                        }
+                    }
+
+                    // 4c. Positional Bonuses (only apply to playerForMax)
+                    if (player === playerForMax) {
+                        const midLineRow = 4;
+                        if ((playerForMax === PLAYERS.ORANGE && rc.row > midLineRow) || (playerForMax === PLAYERS.YELLOW && rc.row < midLineRow)) {
+                            score += EVAL_ADVANCE_BONUS;
+                        }
+                        if (rc.col >= 2 && rc.col <= 4) {
+                            score += EVAL_CENTER_BONUS;
+                        }
+                    }
+                } // End piece loop
+            } // End player loop
+
+            // --- 5. Evaluate Threats (Safety Penalty & Attacking Bonus) ---
+            let totalThreatPenalty = 0;
+            let totalAttackingBonus = 0;
+            for (const myItem of piecesData[playerForMax]) {
+                // Check safety
+                for (const oppItem of piecesData[opponent]) {
+                    if (isValidMove(oppItem.coords, myItem.coords, oppItem.piece, boardState, true).valid) {
+                        const penalty = EVAL_THREATENED_PENALTY_MULT * (EVAL_PIECE_VALUES[myItem.piece.rank] || 0);
+                        totalThreatPenalty += penalty;
+                        break; // Penalize once per threatened piece
+                    }
+                }
+                // Check attacks
+                for (const oppItem of piecesData[opponent]) {
+                    if (isValidMove(myItem.coords, oppItem.coords, myItem.piece, boardState, true).valid) {
+                        const bonus = EVAL_THREATENING_BONUS_MULT * (EVAL_PIECE_VALUES[oppItem.piece.rank] || 0);
+                        totalAttackingBonus += bonus;
+                    }
+                }
             }
-             for (const pieceData of piecesData[opponent]) {
-                 const adjacent = getAdjacentCoords(pieceData.coords);
-                 let isThreatened = false;
-                 for (const adj of adjacent) {
-                     const adjPiece = boardState[adj];
-                     if (adjPiece?.player === playerForMax && isValidMove(adj, pieceData.coords, adjPiece, boardState, true).valid) {
-                         isThreatened = true; break;
-                     }
-                 }
-                 if (isThreatened) {
-                     minThreatenedValue += AI_PIECE_VALUES[pieceData.rank] || 10;
-                 }
-                  // Check if this piece threatens AI
-                 for(const move of getAllValidMoves(boardState, opponent, true).filter(m => m.from === pieceData.coords)) {
-                     if(boardState[move.to]?.player === playerForMax) {
-                         minThreateningScore += AI_THREATENING_BONUS; // Use same constant, subtract later
-                         break;
-                     }
-                 }
+            score -= totalThreatPenalty;
+            score += totalAttackingBonus;
+
+            // --- 6. Mobility Score (Simple Version) ---
+            // Calculate valid moves for both players (can be expensive)
+            // Only do this if the weight is non-zero
+            if (EVAL_MOBILITY_WEIGHT !== 0) {
+                try {
+                    maxMovesCount = getAllValidMoves(boardState, playerForMax, true).length;
+                    minMovesCount = getAllValidMoves(boardState, opponent, true).length;
+                    score += (maxMovesCount - minMovesCount) * EVAL_MOBILITY_WEIGHT;
+                    // console.log(`[Eval Mobility] Max:${maxMovesCount} Min:${minMovesCount} Diff:${maxMovesCount - minMovesCount} Score+=${(maxMovesCount - minMovesCount) * EVAL_MOBILITY_WEIGHT}`);
+                } catch(e) {
+                    console.warn("[Eval V6 Mobility] Error calculating moves:", e);
+                    // Don't add mobility score if calculation fails
+                }
             }
-            // Apply aggregated threat scores
-            score -= maxThreatenedValue * 0.5; // Penalty based on value of threatened AI pieces
-            score += minThreatenedValue * 0.4; // Bonus based on value of threatened Opp pieces
-            score += maxThreateningScore;      // Bonus for AI pieces threatening Opp
-            score -= minThreateningScore;      // Penalty for Opp pieces threatening AI
 
 
-            // --- 4. Check Game End States ---
-            if (maxPieceCount === 0) return AI_LOSE_SCORE; // AI has no pieces
-            if (minPieceCount === 0) return AI_WIN_SCORE;  // Opponent has no pieces
-            // Den occupation checks already happened implicitly via proximity/win checks
+            // --- 7. Final Clamping and Return ---
+            if (!Number.isFinite(score)) {
+                console.warn(`[Eval Warn - V6] Score became non-finite (${score}) before final return. Resetting to 0.`);
+                score = 0;
+            }
 
+            const finalScore = Math.max(EVAL_LOSE_SCORE, Math.min(EVAL_WIN_SCORE, score));
+            // Optional Logging
+            // if (enableTracing) { console.log(`[Eval V6 Result - Player: ${playerForMax}] Score: ${finalScore.toFixed(0)} (Raw: ${score.toFixed(0)}) Board: ${getBoardStateString(boardState)}`); }
 
-            // Add small random jitter to break ties? (Optional)
-            // if (score < (AI_WIN_SCORE / 1.1) && score > (AI_LOSE_SCORE / 1.1)) {
-            //     score += (Math.random() - 0.5) * 0.1;
-            // }
-
-            return score;
+            return finalScore;
         }
 
 
@@ -5844,55 +6633,70 @@
         }
 
         /**
-         * Logs a move to the `gameState.moveHistory` array and updates the visual move log panel.
+         * Logs a move to the `gameState.moveHistory` Map and updates the visual move log panel.
          * Handles creating new turn entries or updating existing ones by replacing the DOM element for the turn.
-         * Uses the explicitly provided turn number.
+         * Uses the explicitly provided turn number and Map methods (get, set) for O(1) average access.
          * @param {string} notation - The algebraic notation of the move (e.g., "8xg7++s").
          * @param {string} playerWhoMoved - The player who made the move ('orange' or 'yellow').
          * @param {number} turnNum - The actual turn number this move belongs to.
          */
-        function logMove(notation, playerWhoMoved, turnNum) { // *** Added turnNum parameter ***
-            // Find if an entry for this turn already exists in the history
-            let currentTurnEntry = gameState.moveHistory.find(entry => entry.turn === turnNum);
+        function logMove(notation, playerWhoMoved, turnNum) {
+            // *** Use Map.get() for O(1) average lookup ***
+            let currentTurnEntry = gameState.moveHistory.get(turnNum);
             // Find if a DOM element for this turn already exists
             let existingLogDiv = moveLogElement.querySelector(`div.log-entry[data-turn="${turnNum}"]`);
 
             if (playerWhoMoved === PLAYERS.ORANGE) {
                 // --- Orange's Move ---
                 if (!currentTurnEntry) {
-                    currentTurnEntry = { turn: turnNum, orange: notation, yellow: null };
-                    gameState.moveHistory.push(currentTurnEntry);
-                    if (existingLogDiv) existingLogDiv.remove();
+                    // Create new entry if it doesn't exist
+                    currentTurnEntry = {
+                        turn: turnNum,
+                        orange: notation,
+                        yellow: null
+                    };
+                    gameState.moveHistory.set(turnNum, currentTurnEntry); // *** Use Map.set() ***
+                    if (existingLogDiv) existingLogDiv.remove(); // Remove old DOM if any
                     addLogEntryToDOM(turnNum, notation, null);
                 } else {
+                    // Update existing entry (should be rare unless undoing/re-doing)
                     console.warn("Updating Orange's move in existing turn entry:", turnNum);
                     currentTurnEntry.orange = notation;
-                    currentTurnEntry.yellow = null;
+                    currentTurnEntry.yellow = null; // Reset Yellow's move if Orange moved again on same turn #
+                    // gameState.moveHistory.set(turnNum, currentTurnEntry); // Map entry is modified in place
                     if (existingLogDiv) existingLogDiv.remove();
                     addLogEntryToDOM(turnNum, currentTurnEntry.orange, currentTurnEntry.yellow);
                 }
             } else {
                 // --- Yellow's Move ---
                 if (currentTurnEntry) {
+                    // Update the existing entry with Yellow's move
                     currentTurnEntry.yellow = notation;
+                    // gameState.moveHistory.set(turnNum, currentTurnEntry); // Map entry modified in place
+
+                    // Remove and re-add the DOM element to show both moves
                     if (existingLogDiv) {
                         existingLogDiv.remove();
                     } else {
-                         console.warn(`Log div missing for turn ${turnNum} when Yellow moved. It should have existed.`);
+                        console.warn(`Log div missing for turn ${turnNum} when Yellow moved. It should have existed.`);
                     }
                     addLogEntryToDOM(turnNum, currentTurnEntry.orange, currentTurnEntry.yellow);
                 } else {
                     // This block should ideally NOT be reached if the turn number logic is correct.
                     console.error(`Logic Error Recovery: Yellow moved (${notation}) but no history entry found for provided turn ${turnNum}. Creating entry.`);
-                    currentTurnEntry = { turn: turnNum, orange: '?', yellow: notation }; // Indicate missing Orange move
-                    gameState.moveHistory.push(currentTurnEntry);
+                    currentTurnEntry = {
+                        turn: turnNum,
+                        orange: '?',
+                        yellow: notation
+                    }; // Indicate missing Orange move
+                    gameState.moveHistory.set(turnNum, currentTurnEntry); // *** Use Map.set() ***
                     if (existingLogDiv) existingLogDiv.remove();
                     addLogEntryToDOM(turnNum, '?', notation);
                 }
             }
             // Ensure log scrolls to bottom (with hover check)
             if (!moveLogElement.matches(':hover')) {
-                 moveLogElement.scrollTop = moveLogElement.scrollHeight;
+                moveLogElement.scrollTop = moveLogElement.scrollHeight;
             }
         }
 
