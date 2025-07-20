@@ -178,28 +178,24 @@
             background-color: rgba(100, 150, 255, 0.3);
         }
 
-        .trap-orange::before {
-            /* Trap in Orange's starting area (affects Yellow) */
-            background-color: rgba(255, 150, 150, 0.3);
-            border: 2px dashed var(--hungry-outline);
-            /* Red dashed border */
+        .trap-orange::before { /* Affects Orange, near Yellow den */
+            /* background-color: rgba(255, 255, 150, 0.3); */
+            /* border: 2px dashed var(--dark-yellow); */
         }
 
-        .trap-yellow::before {
-            /* Trap in Yellow's starting area (affects Orange) */
-            background-color: rgba(255, 255, 150, 0.3);
-            border: 2px dashed var(--dark-yellow);
-            /* Yellow dashed border */
+        .trap-yellow::before { /* Affects Yellow, near Orange den */
+            /* background-color: rgba(255, 150, 150, 0.3); */
+            /* border: 2px dashed var(--hungry-outline); */
         }
 
         .den-orange::before {
-            background-color: rgba(255, 100, 0, 0.4);
-            border: 3px solid var(--dark-orange);
+            /* background-color: rgba(255, 100, 0, 0.4); */
+            /* border: 3px solid var(--dark-orange); */
         }
 
         .den-yellow::before {
-            background-color: rgba(255, 255, 0, 0.4);
-            border: 3px solid var(--dark-yellow);
+            /* background-color: rgba(255, 255, 0, 0.4); */
+            /* border: 3px solid var(--dark-yellow); */
         }
 
         /* Highlighting for AI's last move */
@@ -431,9 +427,8 @@
 
         /* --- Buttons --- */
         .button-container {
-            margin-top: auto;
-            /* Pushes buttons to the bottom of the UI panel */
-            padding-top: 20px;
+            padding-top: 10px;
+            margin-bottom: 15px;
             display: flex;
             gap: 10px;
             justify-content: space-around;
@@ -490,6 +485,86 @@
             background-color: #adb5bd;
             cursor: not-allowed;
             box-shadow: none;
+        }
+
+        /* --- PvP Toggle Switch Styling --- */
+        .pvp-toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between; /* Adjust as needed */
+            margin-top: 8px;
+            margin-bottom: 8px;
+            padding: 5px 0;
+        }
+
+        .pvp-label {
+            margin-right: 10px;
+            font-weight: 500;
+            font-size: 0.95em;
+        }
+
+        /* The switch - a wrapper around the checkbox and slider */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px; /* Width of the switch */
+            height: 24px; /* Height of the switch */
+        }
+
+        /* Hide default HTML checkbox */
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        /* The slider */
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; /* Height of the knob */
+            width: 18px; /* Width of the knob */
+            left: 3px; /* Position from left */
+            bottom: 3px; /* Position from bottom */
+            background-color: white;
+            transition: .4s;
+        }
+
+        input:checked + .slider {
+            background-color: var(--orange-color); /* Use a game color when active */
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px var(--orange-color);
+        }
+         input:focus-visible + .slider { /* Better focus styling */
+             outline: 2px solid var(--focus-outline);
+             outline-offset: 1px;
+         }
+
+
+        input:checked + .slider:before {
+            transform: translateX(26px); /* Move knob to the right */
+        }
+
+        /* Rounded sliders */
+        .slider.round {
+            border-radius: 24px; /* Make the track round */
+        }
+
+        .slider.round:before {
+            border-radius: 50%; /* Make the knob round */
         }
 
         /* --- Logs --- */
@@ -842,6 +917,20 @@
             <p>Turn: <span id="turn-indicator">Orange</span></p>
             <p>Status: <span id="status-message" aria-live="polite">Loading...</span></p>
 
+            <!-- Player vs Player Toggle -->
+            <div class="pvp-toggle-container">
+                <label for="pvp-toggle" class="pvp-label">Player vs Player Mode:</label>
+                <label class="switch">
+                    <input type="checkbox" id="pvp-toggle">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
+            <div class="button-container">
+                <button id="undo-button" class="game-button" disabled>Undo Turn</button>
+                <button id="reset-button" class="game-button">Reset Game</button>
+            </div>
+
             <h3>Move Log</h3>
             <div id="move-log" role="log" aria-live="polite" aria-atomic="false">
                 <!-- Log entries will be added by JavaScript here -->
@@ -860,11 +949,6 @@
                 <p id="load-status-message" style="font-size: 0.85em; color: #6c757d; min-height: 1.2em; margin-top: 5px;"></p>
             </div>
             <!-- End Load From State Section -->
-
-            <div class="button-container">
-                <button id="undo-button" class="game-button" disabled>Undo Turn</button>
-                <button id="reset-button" class="game-button">Reset Game</button>
-            </div>
         </section>
     </main>
 
@@ -929,13 +1013,13 @@
             <ul>
                 <li><strong>Rat [1]:</strong>
                     <ul>
-                        <li>Can enter and move on <strong>Water</strong> squares.</li>
-                        <li>Can attack the <strong>Elephant [8]</strong>, but only when attacking from a land square (cannot attack Elephant from Water).</li>
+                        <li>Can enter, move on, and <strong>attack from Water</strong> squares.</li>
+                        <li>Can attack the <strong>Elephant [8]</strong>, but only when attacking from a land square (cannot attack Elephant when starting from Water).</li>
                     </ul>
                  </li>
                  <li><strong>Dog [3]:</strong>
                     <ul>
-                         <li>Can enter and move on <strong>Water</strong> squares.</li>
+                         <li>Can enter, move on, and <strong>attack from Water</strong> squares.</li>
                     </ul>
                  </li>
                  <li><strong>Lion [7] and Tiger [6]:</strong>
@@ -1255,6 +1339,8 @@
             let focusedCoords = null; // Coordinates of the currently focused cell/piece (for keyboard nav)
             let aiLastMove = { from: null, to: null }; // Stores AI's last move for highlighting
             let isDragging = false; // Flag to track if a drag operation is in progress
+            let isPlayerVsPlayerMode = false; // Flag for PvP mode (default is PvE)
+            let aiMoveTimeoutId = null; // To store the AI delay timeout
 
 
             // --- Utility Functions ---
@@ -1575,8 +1661,15 @@
             function updatePieceAccessibility(pieceElement) {
                 if (!pieceElement) return;
                 const piecePlayer = pieceElement.dataset.player;
-                // Enable interaction if it's this piece's player's turn and game isn't over
-                if (piecePlayer === gameState.currentPlayer && !gameState.gameOver) {
+                // --- MODIFIED CONDITION ---
+                // Enable interaction if:
+                // 1. Game is not over AND
+                // 2. ( PvP mode is ON OR the piece belongs to the current player )
+                const shouldBeInteractive = !gameState.gameOver &&
+                                            (isPlayerVsPlayerMode || piecePlayer === gameState.currentPlayer);
+                // --- END MODIFICATION ---
+
+                if (shouldBeInteractive) {
                     pieceElement.setAttribute('tabindex', '0'); // Allow focus
                     pieceElement.draggable = true; // Allow dragging
                 } else {
@@ -1722,12 +1815,12 @@
             }
 
             /**
-             * Enables or disables the Undo button based on the game history length and AI thinking state.
+             * Enables or disables the Undo button based on the game history length, game over state, and AI thinking state.
              */
             function updateUndoButtonState() {
-                // Disable if history is empty OR if it's AI's turn and interaction is disabled
-                undoButton.disabled = gameHistory.length === 0 ||
-                    (gameState.currentPlayer === PLAYERS.YELLOW && boardGridWrapper.style.pointerEvents === 'none');
+                // Disable if history is empty OR game is over OR if it's AI's turn and interaction is disabled
+                undoButton.disabled = gameHistory.length === 0 || gameState.gameOver ||
+                                      (gameState.currentPlayer === PLAYERS.YELLOW && boardGridWrapper.style.pointerEvents === 'none');
             }
 
 
@@ -1753,6 +1846,15 @@
                     gameOver: false,
                     winner: null
                 };
+                // Reset PvP mode on game initialization/reset
+                isPlayerVsPlayerMode = false;
+                const pvpToggle = document.getElementById('pvp-toggle');
+                if (pvpToggle) pvpToggle.checked = false;
+                // Clear any pending AI timeout from previous game
+                if (aiMoveTimeoutId) {
+                     clearTimeout(aiMoveTimeoutId);
+                     aiMoveTimeoutId = null;
+                }
                 gameHistory = []; // Clear undo history
                 aiLastMove = { from: null, to: null }; // Clear AI move highlight
 
@@ -2200,40 +2302,58 @@
 
             /**
              * Handles clicking on a piece. Selects/deselects the piece and highlights valid moves.
-             * Ignored if a drag operation is currently happening.
+             * Ignored if a drag operation is currently happening or the click target is not the piece div itself.
+             * Allows click event to bubble for capture attempts if a friendly piece is already selected.
              * @param {MouseEvent} e - The click event object.
              */
             function handlePieceClick(e) {
+                // *** Ensure the click was directly on the piece div, not a child like the image ***
+                if (e.target !== e.currentTarget) {
+                     console.log("handlePieceClick: Click target was not the piece div itself, ignoring in this handler.", e.target);
+                     // Allow event to bubble without interference from this specific handler
+                     return;
+                }
+                // *** END ADDED CHECK ***
+
                 // Ignore clicks that might happen at the end of a drag/touch interaction
                 if (isDragging) {
                     console.log("Piece click ignored during drag.");
                     return;
                 }
-                const pieceElement = e.target.closest('.piece');
-                if (!pieceElement || gameState.gameOver) return; // Ignore if game over or not a piece
+                // pieceElement is now guaranteed to be e.currentTarget if we passed the check above
+                const pieceElement = e.currentTarget; // Use currentTarget
+
+                if (!pieceElement || gameState.gameOver) {
+                    // Added safety check - though redundant if currentTarget check passes
+                    console.log("handlePieceClick: Ignoring click - pieceElement not found or game over.");
+                    return;
+                }
 
                 const coords = pieceElement.dataset.coords;
                 const pieceData = getPieceData(coords);
 
                 // Handle clicks on opponent's pieces OR empty space where piece was (edge case)
                 if (!pieceData || pieceData.player !== gameState.currentPlayer) {
-                    // --- MODIFIED ---
+                    console.log(`handlePieceClick: Clicked on opponent's piece/empty (${coords}).`);
+                    // --- RE-APPLY FIX ---
                     // If a friendly piece IS selected, clicking an opponent piece might be
                     // an attempt to capture. Let the handleCellClick deal with it.
                     // Only clear selection/highlights if NO friendly piece is currently selected.
                     if (!selectedPieceCoords) {
+                        console.log(`handlePieceClick: No friendly piece selected, clearing highlights/selection.`);
                         clearHighlights();
                         // deselectPiece() implicitly called by clearHighlights if needed,
                         // but calling it explicitly when selectedPieceCoords is null is safe.
                         deselectPiece();
+                    } else {
+                         console.log(`handlePieceClick: Friendly piece ${selectedPieceCoords} is selected. Allowing event to bubble for potential capture on ${coords}.`);
                     }
-                    // If selectedPieceCoords IS set, do nothing here. The event will bubble
-                    // to the cell, and handleCellClick will check if it's a valid move/capture.
-                    return;
-                    // --- END MODIFICATION ---
+                    return; // Return without changing selection if a friendly piece was selected
+                    // --- END FIX RE-APPLICATION ---
                 }
 
                 // --- If clicking on a friendly piece ---
+                console.log(`handlePieceClick: Clicked on own piece (${coords}).`);
 
                 // If clicking the already selected piece, deselect it
                 if (selectedPieceCoords === coords) {
@@ -2243,7 +2363,8 @@
                 else {
                     selectPiece(coords); // Selects and highlights moves
                 }
-                console.log(`Piece Click: ${coords}, Selected: ${selectedPieceCoords}`);
+                // Moved log here for clarity, now reflects state AFTER action
+                console.log(`handlePieceClick: Action completed. Selected: ${selectedPieceCoords}`);
             }
 
             /**
@@ -2252,41 +2373,66 @@
              * @param {MouseEvent} e - The click event object.
              */
             function handleCellClick(e) {
-                 // Ignore clicks that might happen at the end of a drag/touch interaction
-                if (isDragging) {
-                    console.log("Cell click ignored during drag.");
+                console.log("--- handleCellClick triggered ---"); // Log entry
+
+                // Use e.currentTarget to ensure we reference the cell the listener is attached to
+                const targetCell = e.currentTarget;
+
+                // Basic validation of the target cell itself
+                if (!targetCell || !targetCell.classList.contains('cell') || !targetCell.dataset.coords) {
+                    console.log("handleCellClick ignored: event.currentTarget is not a valid cell element or missing coords.", targetCell);
                     return;
                 }
-                const targetCell = e.target.closest('.cell');
-                // Ignore if game over, no cell clicked, or no piece selected
-                if (!targetCell || gameState.gameOver || !selectedPieceCoords) return;
+                 const targetCoords = targetCell.dataset.coords;
+                 console.log(`handleCellClick: Target Cell Coords = ${targetCoords}`);
 
-                const targetCoords = targetCell.dataset.coords;
+                // Ignore clicks during drag or if game is over
+                if (isDragging) {
+                    console.log("handleCellClick ignored: isDragging is true.");
+                    return;
+                }
+                if (gameState.gameOver) {
+                    console.log("handleCellClick ignored: game is over.");
+                    return;
+                }
+
+                // Check if a piece is selected (critical for move/capture attempts)
+                if (!selectedPieceCoords) {
+                    console.log("handleCellClick ignored: No piece selected (selectedPieceCoords is null/undefined).");
+                    // Optional: Add feedback if desired when clicking cell without selection
+                    // flashCell(targetCoords, 'blue', 200); // e.g., flash blue
+                    return;
+                }
+                console.log(`handleCellClick: Proceeding. Selected piece = ${selectedPieceCoords}`);
+
+                // Get data for the selected piece
                 const pieceToMove = getPieceData(selectedPieceCoords);
 
-                // Safety check: Should have a piece selected if selectedPieceCoords is set
+                // Safety check for selected piece data
                 if (!pieceToMove) {
-                    console.warn("Cell clicked but selected piece data not found for:", selectedPieceCoords);
-                    deselectPiece(); // Clean up selection state
+                    console.warn(`handleCellClick: Selected piece data unexpectedly not found for: ${selectedPieceCoords}. Deselecting.`);
+                    deselectPiece();
                     clearHighlights();
                     return;
                 }
+                console.log(`handleCellClick: Attempting move validation: ${selectedPieceCoords} (${RANK_TO_NAME[pieceToMove.rank]}) -> ${targetCoords}`);
 
                 // Validate the move from the selected piece to the clicked cell
                 const validationResult = isValidMove(selectedPieceCoords, targetCoords, pieceToMove);
+                 console.log(`handleCellClick: Validation Result =`, JSON.parse(JSON.stringify(validationResult)));
 
                 if (validationResult.valid) {
                     // Perform the move if valid
-                    console.log(`Performing move via click from ${selectedPieceCoords} to ${targetCoords}`);
+                    console.log(`--> handleCellClick: Validation SUCCESS. Calling performMove(${selectedPieceCoords}, ${targetCoords})`);
                     performMove(selectedPieceCoords, targetCoords);
-                    // performMove handles deselecting
                 } else {
-                    // If invalid, provide feedback (flash cell red) and update status
-                    console.log(`Invalid click move to ${targetCoords}: ${validationResult.reason}`);
-                    flashCell(targetCoords, 'red', 300); // Visual feedback for invalid click
+                    // If invalid, provide feedback
+                    console.log(`--> handleCellClick: Validation FAILED: ${validationResult.reason}`);
+                    flashCell(targetCoords, 'red', 300);
                     updateStatus(`Invalid move: ${validationResult.reason}`);
-                    // Do not deselect here - allow player to try clicking another valid cell
+                    // Do not deselect - allow user to try another target cell
                 }
+                console.log("--- /handleCellClick finished ---"); // Log exit
             }
 
             /**
@@ -2330,8 +2476,11 @@
              * @param {KeyboardEvent} e - The keyboard event object.
              */
             function handleKeyDown(e) {
-                // Ignore keyboard input if game is over or it's AI's turn
-                if (gameState.gameOver || (gameState.currentPlayer === PLAYERS.YELLOW)) return;
+                // Ignore keyboard input if game is over OR if it's AI's turn in PvE mode
+                if (gameState.gameOver || (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW)) {
+                     console.log(`KeyDown ignored: gameOver=${gameState.gameOver}, isPvP=${isPlayerVsPlayerMode}, currentPlayer=${gameState.currentPlayer}`);
+                     return;
+                }
 
                 const { key } = e;
                 let newRow, newCol, targetCoords, currentElement;
@@ -2594,12 +2743,29 @@
 
                     // --- IMMEDIATELY Update Attacker's Hungry Status After Capture ---
                     if (isAttack) {
-                        // Update the game state for the piece that just attacked
-                        // 'piece' variable still holds the reference to the moved piece data
-                        piece.isHungry = false; // The piece is no longer hungry after capturing
-                        // Update the visual marker immediately at its new location
-                        updateHungryVisual(toCoords, false);
-                        console.log(`Attacker ${RANK_TO_NAME[piece.rank]}@${toCoords} is no longer hungry after capture.`);
+                        const attackerPieceData = gameState.board[toCoords];
+
+                        if (attackerPieceData) {
+                             attackerPieceData.isHungry = false;
+                             console.log(`Attacker ${RANK_TO_NAME[attackerPieceData.rank]}@${toCoords} state set to not hungry.`);
+                             // Use the existing element reference 'pieceElement' which was updated earlier
+                             // Need to ensure pieceElement actually exists from the check outside this block
+                             if (pieceElement) { // Check we have the element reference
+                                  updateHungryVisual(toCoords, false, pieceElement); // <<< PASS THE ELEMENT
+                             } else {
+                                 // Fallback if pieceElement reference was somehow lost (shouldn't happen)
+                                 console.warn(`Capture at ${toCoords}: pieceElement reference lost, falling back to ID lookup for visual update.`);
+                                 updateHungryVisual(toCoords, false);
+                             }
+                        } else {
+                             console.warn(`Tried to update hungry status for capture at ${toCoords}, but no piece found in gameState.board!`);
+                             // Still try to update visual just in case element exists but state is weird
+                             if (pieceElement) { // Use element ref if available
+                                 updateHungryVisual(toCoords, false, pieceElement);
+                             } else {
+                                 updateHungryVisual(toCoords, false);
+                             }
+                        }
                     }
                     // --- End Immediate Update ---
                     // --- Update Trap Indicator for Moved Piece ---
@@ -2658,17 +2824,33 @@
                 }
 
                 // --- Declare Hungry Animals for the *Next* Player ---
-                // Determine which of the opponent's pieces can now attack
-                const { hungryCount, hungryPiecesMap } = declareHungryAnimals(opponent);
-                // Update the isHungry status in the board state and apply visual cues
+                const { hungryCount, hungryPiecesMap } = declareHungryAnimals(opponent); // opponent = whose turn is NEXT
+
+                // Update the isHungry status in the board state and apply visual cues ONLY for the NEXT player's pieces
+                console.log(`---> Updating hungry visuals based on map for NEXT player (${opponent}):`, hungryPiecesMap); // Add log before loop
+
+                // Update the isHungry status in the board state and apply visual cues ONLY for the NEXT player's pieces
                 Object.keys(gameState.board).forEach(coords => {
-                    const p = gameState.board[coords];
-                    if (p) {
-                        p.isHungry = !!hungryPiecesMap[coords]; // Update state
-                        updateHungryVisual(coords, p.isHungry); // Update DOM
+                    const piece = gameState.board[coords];
+                    if (piece) { // Check piece exists
+                         // *** Check if the piece belongs to the player whose turn is NEXT ***
+                         if (piece.player === opponent) {
+                            // Check if this specific piece should be hungry for the next turn
+                            const isNowHungry = !!hungryPiecesMap[coords];
+                            console.log(`   Loop Check: ${coords} (${piece.player}) - Belongs to next player. Should be hungry? ${isNowHungry}`);
+                            // Update the piece's state in gameState.board
+                            piece.isHungry = isNowHungry;
+                            // Update the visual marker for this piece accordingly
+                            updateHungryVisual(coords, isNowHungry);
+                         } else {
+                             // *** This piece belongs to the player who JUST moved (e.g., Yellow Elephant) ***
+                             // We should NOT update its hungry status or visual here based on the *opponent's* hungry map.
+                              console.log(`   Loop Check: ${coords} (${piece.player}) - Belongs to current mover. Skipping visual update in this loop.`);
+                         }
                     }
                 });
-                // Add '+' to notation for each hungry animal declared
+
+                // Add '+' to notation for each hungry animal declared for the opponent
                 if (hungryCount > 0) {
                     notation += '+'.repeat(hungryCount); // e.g., "8xg7++" if 2 animals became hungry
                 }
@@ -2754,16 +2936,22 @@
                     highlightAILastMove();
                 }
 
-                // --- Trigger AI if it's now Yellow's turn ---
-                if (gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
+                console.log(`!!! Checking AI Trigger: isPlayerVsPlayerMode = ${isPlayerVsPlayerMode}, currentPlayer = ${gameState.currentPlayer}, gameOver = ${gameState.gameOver}`);
+
+                // --- Trigger AI if it's now Yellow's turn AND NOT in PvP mode ---
+                if (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) { // <<< CORRECTED condition
                     disablePlayerInteraction(); // Prevent player moves during AI thinking
                     undoButton.disabled = true; // Prevent undo during AI thinking
                     // Add a delay before starting AI calculation
-                    console.log("AI Turn: Waiting 2 seconds before thinking..."); // Optional: log the delay start
-                    setTimeout(triggerAIMove, 2000); // 2000ms (2 second) delay
+                    console.log("AI Turn: Waiting 1.5 seconds before thinking..."); // Optional: log the delay start
+                    // Clear previous just in case
+                    if (aiMoveTimeoutId) clearTimeout(aiMoveTimeoutId);
+                    // Store the timeout ID so it can be cancelled if mode changes
+                    aiMoveTimeoutId = setTimeout(triggerAIMove, 1500); // 1500ms (1.5 second) delay
                 } else if (!gameState.gameOver) {
-                    // If it's Orange's turn, ensure interaction is enabled
-                    enablePlayerInteraction();
+                    // If it's Orange's turn, OR if it's Yellow's turn in PvP Mode, ensure interaction is enabled
+                    console.log(`Ensuring interaction enabled for ${gameState.currentPlayer} (PvP Mode: ${isPlayerVsPlayerMode})`);
+                    enablePlayerInteraction(); // Make sure interaction is enabled
                 }
             }
 
@@ -2866,11 +3054,14 @@
                 if (pieceRank === 1 && targetPieceData?.rank === 8 && isMovingFromWater) {
                      return { valid: false, reason: "Rat cannot attack Elephant from water."};
                 }
-                // Rule: Cannot attack land from water
-                if (isMovingFromWater && !isMovingToWater && targetPieceData) { // Added targetPieceData check - only relevant for attacks
-                     return { valid: false, reason: "Cannot attack land from water." };
+                // Rule: Only swimmers (Rat/Dog) can attack land from water
+                if (isMovingFromWater && !isMovingToWater && targetPieceData && !pieceAbilities.swims) { // <<< MODIFIED LINE
+                     // Block the attack IF: starting in water, moving to land, targeting a piece, AND the attacker CANNOT swim.
+                     return { valid: false, reason: "Only Rat/Dog can attack land from water." };
                 }
                 // Note: Exiting water to empty land is handled implicitly later by checking orthogonal/jump validity
+                // Note: Rat attacking Elephant from water is handled by the rule above this one.
+                // Note: Other swimmers (Dog) attacking land IS allowed by this point.
 
 
                 // --- Jump Movement Rules ---
@@ -3884,17 +4075,39 @@
 
             /**
              * Adds or removes the 'hungry' class from a piece's DOM element.
-             * @param {string} coords - The coordinates of the piece.
+             * Can accept coordinates OR a direct element reference.
+             * @param {string} coords - The coordinates of the piece (used if element is not provided).
              * @param {boolean} isHungry - Whether the piece should be marked as hungry.
+             * @param {HTMLElement|null} [element=null] - Optional: Direct reference to the piece element.
              */
-            function updateHungryVisual(coords, isHungry) {
-                const pieceElement = document.getElementById(getPieceElementId(coords));
+            function updateHungryVisual(coords, isHungry, element = null) { // Added element parameter
+                // Prioritize the passed element reference if available
+                const pieceElement = element || document.getElementById(getPieceElementId(coords));
+
+                // console.log(`updateHungryVisual called for ${coords}: isHungry = ${isHungry}`, pieceElement ? '(Element found)' : '(Element NOT found!)');
+
                 if (pieceElement) {
                     if (isHungry) {
-                        pieceElement.classList.add('hungry'); // Add dashed red outline
+                        pieceElement.classList.add('hungry'); // Add red glow
+                        // console.log(`   Added .hungry class to ${coords}`);
                     } else {
-                        pieceElement.classList.remove('hungry'); // Remove outline
+                        // Use a try-catch just in case something weird happens with the element reference
+                        try {
+                             pieceElement.classList.remove('hungry'); // Remove red glow
+                             // console.log(`   Attempted to remove .hungry class from ${coords}`);
+                             // Verify removal (for debugging)
+                             // if (pieceElement.classList.contains('hungry')) {
+                             //      console.error(`   VERIFICATION FAILED: .hungry class still present on ${coords} immediately after removal attempt!`);
+                             // } else {
+                             //      console.log(`   VERIFICATION SUCCEEDED: .hungry class removed from ${coords}.`);
+                             // }
+                        } catch (e) {
+                            console.error(`Error removing hungry class from element for ${coords}:`, e, pieceElement);
+                        }
                     }
+                } else {
+                    // Log if element still not found
+                     console.warn(`updateHungryVisual: Element not found for ${coords} (even with potential direct reference).`);
                 }
             }
 
@@ -4101,6 +4314,60 @@
                 console.warn("Rules accordion button or content not found.");
             }
             // --- End Accordion Logic ---
+
+            // --- PvP Toggle Listener ---
+            const pvpToggleButton = document.getElementById('pvp-toggle');
+
+            if (pvpToggleButton) {
+                pvpToggleButton.addEventListener('change', (event) => {
+                    // Store previous mode just in case, though not strictly needed in this version
+                    // const oldModeIsPvP = isPlayerVsPlayerMode;
+                    isPlayerVsPlayerMode = event.target.checked; // Set new mode state
+                    console.log(`Player vs Player mode ${isPlayerVsPlayerMode ? 'ENABLED' : 'DISABLED'}`);
+
+                    // --- Step 1: Always clear any pending AI move timeout ---
+                    if (aiMoveTimeoutId) {
+                        console.log("Clearing existing AI move timeout ID:", aiMoveTimeoutId);
+                        clearTimeout(aiMoveTimeoutId);
+                        aiMoveTimeoutId = null;
+                    }
+
+                    // --- Step 2: Determine required interaction state based on NEW mode and current player ---
+                    if (isPlayerVsPlayerMode) {
+                        // If switching TO PvP (or already in PvP):
+                        // Interaction should always be enabled, regardless of whose turn it is.
+                        console.log("PvP Mode ACTIVE: Ensuring player interaction is enabled.");
+                        enablePlayerInteraction(); // Enable for current player
+                        updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn (PvP Mode)`);
+                    } else {
+                        // If switching TO PvE (or already in PvE):
+                        if (gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
+                            // AI's turn in PvE mode: Disable interaction and schedule AI move.
+                            console.log("PvE Mode ACTIVE and Yellow's turn: Disabling interaction, scheduling AI move.");
+                            disablePlayerInteraction();
+                            // AI Move scheduling happens here
+                            console.log("AI Turn (Triggered by mode switch): Waiting 1.5 seconds before thinking...");
+                            aiMoveTimeoutId = setTimeout(triggerAIMove, 1500); // Set the timeout
+                        } else {
+                            // Human's turn (Orange) in PvE mode: Ensure interaction is enabled.
+                             console.log("PvE Mode ACTIVE and Orange's turn: Ensuring player interaction is enabled.");
+                            enablePlayerInteraction(); // Ensure Orange can move
+                            // Update status maybe?
+                            // updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn`);
+                        }
+                    }
+
+                    // --- Step 3: Always update accessibility for pieces and state of Undo button ---
+                    // updateAllPieceAccessibility is called inside enable/disablePlayerInteraction,
+                    // but calling it again ensures consistency if needed.
+                    updateAllPieceAccessibility(); // Reflects PvP mode or current player
+                    updateUndoButtonState(); // Update based on new interaction state/game over
+
+                });
+            } else {
+                console.warn("PvP toggle button not found.");
+            }
+            // --- End PvP Toggle Listener ---
 
             // --- Initial Game Setup ---
             console.log("Initializing Clesto Game...");
