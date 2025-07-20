@@ -4080,7 +4080,7 @@
 
         /**
          * Finds the best move for the AI using the Minimax algorithm at the root level.
-         * Considers hungry piece obligations.
+         * Considers hungry piece obligations. INCLUDES DEBUG LOGGING FOR STATIC EVAL.
          * @param {number} depth - The maximum search depth for Minimax.
          * @param {object} currentGameState - The current state of the game.
          * @param {string} playerForMax - The player the AI is playing as (always YELLOW here).
@@ -4101,10 +4101,8 @@
             // --- Immediate Win Check ---
             for (const move of possibleMoves) {
                 if (move.to === opponentDen) {
-                    // Check if the winning piece is not hungry
                     if (!currentGameState.board[move.from]?.isHungry) {
                          console.log("AI Found immediate winning move to Den:", move);
-                         // Return immediately with win score + depth bonus
                          return { move: move, score: AI_WIN_SCORE + depth };
                      }
                 }
@@ -4113,6 +4111,9 @@
             // --- Handle Hungry Pieces Obligation ---
             const hungryMoves = possibleMoves.filter(move => currentGameState.board[move.from]?.isHungry);
             let movesToConsider = possibleMoves;
+            // --- DEBUG: Log considered moves ---
+            console.log(`[findBestMove] Initial possible moves: ${possibleMoves.map(m => m.from + '->' + m.to).join(', ')}`);
+            // --- END DEBUG ---
             if (hungryMoves.length > 0) {
                 const attackingHungryMoves = hungryMoves.filter(move => !!currentGameState.board[move.to]);
                 if (attackingHungryMoves.length > 0) {
@@ -4123,36 +4124,49 @@
                     movesToConsider = hungryMoves;
                 }
             }
+             // --- DEBUG: Log considered moves after hunger filter ---
+             console.log(`[findBestMove] Moves considered after hunger filter: ${movesToConsider.map(m => m.from + '->' + m.to).join(', ')}`);
+             // --- END DEBUG ---
+
 
             // --- Evaluate Moves using Minimax ---
             for (const move of movesToConsider) {
                 // Simulate move AND get move info
                 const { nextState, moveInfo } = simulateMove(currentGameState, move);
+
+                // --- DEBUG: Evaluate static score AFTER this move ---
+                const staticEvalScore = evaluateBoard(nextState.board, playerForMax, moveInfo);
+                console.log(`[findBestMove DEBUG] Move ${move.from}->${move.to}: Static Eval Score = ${staticEvalScore.toFixed(2)}`);
+                // --- END DEBUG ---
+
                 // Call minimax for the opponent's turn (minimizing player)
-                // Initial call starts with widest possible alpha/beta range
-                const score = minimax(depth - 1, nextState, false, -Infinity, Infinity, playerForMax); // Pass initial alpha/beta here
+                const score = minimax(depth - 1, nextState, false, -Infinity, Infinity, playerForMax);
+
+                 // --- DEBUG: Log Minimax score for this move ---
+                 console.log(`[findBestMove DEBUG] Move ${move.from}->${move.to}: Minimax Score (Depth ${depth}) = ${score.toFixed(2)}`);
+                 // --- END DEBUG ---
 
                 let currentScore = score;
-                // Add randomness only if score is not critical (win/loss range)
                 if (Math.abs(score) < AI_WIN_SCORE / 1.1 && Math.abs(score) < Math.abs(AI_LOSE_SCORE) / 1.1 ) {
                     currentScore += (Math.random() - 0.5) * 0.1;
                 }
 
                 // Update best score and move found so far at this top level
                 if (currentScore > bestScore) {
+                     // --- DEBUG: Log new best move ---
+                     console.log(`[findBestMove DEBUG] *** New Best Move: ${move.from}->${move.to} (Score: ${currentScore.toFixed(2)} > Best: ${bestScore.toFixed(2)}) ***`);
+                     // --- END DEBUG ---
                     bestScore = currentScore;
                     bestMove = move;
                 }
-                // --- REMOVED Resetting alpha/beta here ---
             }
 
-            // Fallback if no move was selected (should only happen if all moves lead to immediate loss)
+            // Fallback if no move was selected
             if (!bestMove && possibleMoves.length > 0) {
                  console.warn("Minimax didn't find a best move among 'movesToConsider' (all might lead to loss). Picking random valid move as fallback.");
-                 // Pick a random move from the *considered* set if possible, else from all possible moves
                  const fallbackSet = movesToConsider.length > 0 ? movesToConsider : possibleMoves;
                  bestMove = fallbackSet[Math.floor(Math.random() * fallbackSet.length)];
-                 bestScore = -Infinity; // Indicate it's a fallback score
+                 bestScore = -Infinity;
             }
 
             return { move: bestMove, score: bestScore };
