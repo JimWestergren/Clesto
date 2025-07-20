@@ -1321,7 +1321,7 @@
     <span id="move-log-tooltip" class="log-tooltip shared-tooltip" role="tooltip" aria-hidden="true"></span>
 
     <!-- Turn Start Sound -->
-    <audio id="turn-start-sound" src="notification-alert.mp3" preload="auto"></audio>
+    <audio id="turn-start-sound" src="https://staticjw.com/clesto/play/notification-alert.mp3" preload="auto"></audio>
 
     <script>
     window.addEventListener('load', () => { // Changed from DOMContentLoaded
@@ -1587,6 +1587,7 @@
         const AI_WATER_CONTROL_BONUS = 30;   // Bonus for Rat/Dog on water
         const AI_CLEAR_HUNGER_ATTACK_BONUS = 150; // Specific bonus for making a required hungry attack
         const AI_FORCED_TRAP_DEATH_PENALTY = -1500; // Penalty for moving such that hunger forces capture onto a guarded trap (NEW)
+        const AI_HUNGER_FORCES_TRAP_DEATH_PENALTY = -1800; // Severe penalty for being hungry where only attack leads to guarded trap death (NEW)
         // --- Defensive/Strategic Penalties & Wolf/Cat Specific ---
         const AI_IMMEDIATE_WIN_THREAT_PENALTY = -3000; // Opponent can win next turn
         const AI_NEAR_OWN_DEN_PENALTY = -5;          // Opponent piece near AI den
@@ -1594,12 +1595,12 @@
         const AI_WOLF_CAT_DEFENSE_BONUS = 10;        // BONUS for Wolf/Cat being defensive early
         const AI_WOLF_CAT_ADVANCE_PENALTY_MULT = -4.0;// PENALTY per row Wolf/Cat advance (Increased)
         const AI_BLOCKING_JUMPER_PENALTY = -180;     // Penalty for Wolf/Cat blocking jump squares (High)
-        const AI_TRAP_DANGER_PENALTY = -160;         // AI piece vulnerable ON a trap
+        const AI_TRAP_DANGER_PENALTY = -200;         // AI piece vulnerable ON a trap
         const AI_TRAP_ATTACK_VULNERABILITY = -110;   // AI piece vulnerable TO a trap attack
-        const AI_IS_THREATENED_PENALTY = -100;       // Penalty if AI piece can be captured next turn (SIGNIFICANTLY INCREASED)
+        const AI_IS_THREATENED_PENALTY = -50;       // Penalty if AI piece can be captured next turn (SIGNIFICANTLY INCREASED)
         const AI_OPPONENT_MOBILITY_PENALTY_MULT = -0.5; // Penalty based on opponent's moves (NEW - Negative value)
         // --- Piece Values ---
-        const AI_PIECE_VALUES = { 1: 45, 2: 5, 3: 50, 4: 20, 5: 45, 6: 70, 7: 80, 8: 70 };
+        const AI_PIECE_VALUES = { 1: 45, 2: 5, 3: 50, 4: 20, 5: 45, 6: 75, 7: 85, 8: 70 }; // Lion/Tiger slightly higher than Elephant
 
         // --- Game State Variables ---
         let gameState = {}; // Holds current board, player, turn, etc.
@@ -4617,22 +4618,22 @@
         /**
          * Evaluates the static board state from the perspective of the AI player (playerForMax).
          * Incorporates heuristics favoring specific piece roles, den proximity, captures,
-         * penalizing Wolf/Cat advancement, and penalizing moves that induce fatal hunger traps. // <-- Updated comment
+         * penalizing Wolf/Cat advancement, and penalizing states where hunger forces
+         * a capture onto a guarded trap. // <-- Updated comment
          * Includes safety checks and STRONGLY penalizes landing on guarded traps.
          * Uses tunable constants for easier balancing.
          * @param {object} boardState - The board state to evaluate.
          * @param {string} playerForMax - The player considered "maximizing" (AI, usually Yellow).
-         * @param {object|null} [originalPieceIfMove=null] - If evaluating *after* a move, the data of the piece that just moved.
+         * @param {object|null} [originalPieceIfMove=null] - If evaluating *after* a move (Can be removed if not needed). // PARAM MAY BE REMOVED
          * @returns {number} A numerical score representing the board state's favorability for playerForMax.
          */
-        function evaluateBoard(boardState, playerForMax, originalPieceIfMove = null) { // Task 41b - Induced Hunger Trap Penalty
+        function evaluateBoard(boardState, playerForMax, originalPieceIfMove = null) { // Task 42 - Direct Penalty for Forced Suicide
             let score = 0;
             // --- Safety Check: Ensure boardState is valid ---
             if (!boardState || typeof boardState !== 'object') {
                 console.error("[Eval Error] Invalid boardState provided:", boardState);
-                return playerForMax === PLAYERS.YELLOW ? AI_LOSE_SCORE : AI_WIN_SCORE; // Return worst score if board invalid
+                return playerForMax === PLAYERS.YELLOW ? AI_LOSE_SCORE : AI_WIN_SCORE;
             }
-            // --- End Safety Check ---
 
             const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
             const totalPieces = Object.keys(boardState).length;
@@ -4671,164 +4672,111 @@
             if (boardState[maxDen]?.player === opponent) return AI_LOSE_SCORE;
             if (boardState[minDen]?.player === playerForMax) return AI_WIN_SCORE;
 
-            // --- Pre-calculate Threats & Back Row Jumpers ---
+            // --- Pre-calculate Threats, Mobility & Back Row Jumpers ---
             const threatsTo = {};
             const threatenedBy = {};
             let allOpponentMoves = [];
             let allMyMoves = [];
             let backRowJumpersExist = false;
             let opponentTotalValidMoves = 0;
+            let myOffensiveMovesCount = 0; // Track total AI offensive moves
 
-            try { // Wrap move generation in try/catch for safety
+            try {
                  allOpponentMoves = getAllValidMoves(boardState, opponent, true);
                  allMyMoves = getAllValidMoves(boardState, playerForMax, true);
-                 opponentTotalValidMoves = allOpponentMoves.length; // Store count
+                 opponentTotalValidMoves = allOpponentMoves.length;
 
-                 for (const move of allOpponentMoves) {
-                     // Safety check: Ensure move.to is valid and exists in boardState before accessing player
-                     if (move && move.to && boardState[move.to] && boardState[move.to].player === playerForMax) {
-                         threatsTo[move.to] = true;
-                     }
-                 }
+                 for (const move of allOpponentMoves) { if (move && move.to && boardState[move.to] && boardState[move.to].player === playerForMax) threatsTo[move.to] = true; }
                  for (const move of allMyMoves) {
-                      // Safety check: Ensure move.to is valid and exists in boardState before accessing player
-                     if (move && move.to && boardState[move.to] && boardState[move.to].player === opponent) {
-                         threatenedBy[move.to] = true;
-                     }
+                    if (move && move.to && boardState[move.to] && boardState[move.to].player === opponent) threatenedBy[move.to] = true;
+                    // Track offensive moves here
+                    const rcFrom = getRowCol(move.from);
+                    const rcTo = getRowCol(move.to);
+                    if(rcFrom && rcTo){
+                        const isForward = (playerForMax === PLAYERS.YELLOW && rcTo.row < rcFrom.row) || (playerForMax === PLAYERS.ORANGE && rcTo.row > rcFrom.row);
+                        const isAttack = !!boardState[move.to] && boardState[move.to].player === opponent;
+                        if(isForward || isAttack) myOffensiveMovesCount++;
+                    }
                  }
-                 for (const coords in boardState) {
+                 for (const coords in boardState) { // Check for jumpers
                      const piece = boardState[coords];
-                      // Safety check: Ensure piece exists
                      if (piece?.player === playerForMax && (piece.rank === 7 || piece.rank === 6)) {
                          const rc = getRowCol(coords);
-                         if (rc && ((playerForMax === PLAYERS.YELLOW && rc.row >= 6) || (playerForMax === PLAYERS.ORANGE && rc.row <= 2))) {
-                             backRowJumpersExist = true; break;
-                         }
+                         if (rc && ((playerForMax === PLAYERS.YELLOW && rc.row >= 6) || (playerForMax === PLAYERS.ORANGE && rc.row <= 2))) { backRowJumpersExist = true; break; }
                      }
                  }
-            } catch(e) {
-                 console.error("[Eval Error] Error during pre-calculation:", e, "Board:", boardState);
-                 return 0; // Return neutral score on error during move gen
-            }
+            } catch(e) { console.error("[Eval Error] Error during pre-calculation:", e, "Board:", boardState); return 0; }
 
-            // --- Apply Opponent Mobility Penalty ---
-            score += opponentTotalValidMoves * AI_OPPONENT_MOBILITY_PENALTY_MULT; // Negative multiplier
-
+            // --- Apply Opponent Mobility Penalty & AI Mobility Bonus ---
+            score += opponentTotalValidMoves * AI_OPPONENT_MOBILITY_PENALTY_MULT;
+            score += myOffensiveMovesCount * AI_OFFENSIVE_MOBILITY_BONUS_MULT; // Add overall offensive mobility score
 
             // --- Iterate through pieces ---
             for (const coords in boardState) {
-                try { // Wrap the inner loop for safety
+                try {
                     const piece = boardState[coords];
-                    // --- Safety Check: Skip if piece is null/undefined ---
                     if (!piece) continue;
-
                     const rc = getRowCol(coords);
-                    // --- Safety Check: Skip if coords are invalid ---
-                    if (!rc) {
-                         console.warn(`[Eval Warning] Invalid coords found in boardState: ${coords}`);
-                         continue;
-                    }
+                    if (!rc) continue;
 
                     let pieceScore = pieceValues[piece.rank] || 0;
-                    // --- Safety Check: Ensure abilities exist or default ---
                     const pieceAbilities = SPECIAL_ABILITIES[piece.rank] || {};
                     const isWolfOrCat = piece.rank === 4 || piece.rank === 2;
 
-                    // --- Calculate Mobility & Capture Potential ---
-                    let offensiveMovesCount = 0;
+                    // --- Calculate Capture Bonus Potential (for AI pieces only) ---
                     let captureBonusFromThisPiece = 0;
-                    // Filter moves AFTER confirming piece exists
-                    const pieceMoves = allMyMoves.filter(m => m && m.from === coords); // Add check for m validity
-                    let madeHungryAttack = false; // Flag if this *evaluated state* resulted from a hunger-clearing attack
+                    const pieceMoves = allMyMoves.filter(m => m && m.from === coords); // Moves for THIS piece
+                    if (piece.player === playerForMax) {
+                        for (const move of pieceMoves) {
+                             if (!move || !move.to) continue;
+                             const targetPiece = boardState[move.to];
+                             const isAttack = !!targetPiece && targetPiece.player === opponent;
 
-                    // Check if the state we are evaluating resulted from a hungry attack by the piece *currently* at 'coords'
-                     if (originalPieceIfMove && originalPieceIfMove.to === coords // Piece now at 'coords' is the one that moved
-                        && originalPieceIfMove.wasHungry                     // And it *was* hungry before moving
-                        && originalPieceIfMove.wasCapture) {                 // And the move *was* a capture
-                            madeHungryAttack = true;
-                     }
-
-                    for (const move of pieceMoves) {
-                         // --- Safety Check: Ensure move and move.to are valid ---
-                         if (!move || !move.to) continue;
-                         const targetRC = getRowCol(move.to);
-                         const targetPiece = boardState[move.to]; // Might be undefined if square is empty
-
-                         let isForward = false;
-                         // --- Safety Check: Ensure targetRC is valid ---
-                         if (targetRC) isForward = (playerForMax === PLAYERS.YELLOW && targetRC.row < rc.row) || (playerForMax === PLAYERS.ORANGE && targetRC.row > rc.row);
-
-                         // Check targetPiece *after* ensuring it exists
-                         const isAttack = !!targetPiece && targetPiece.player === opponent;
-
-                        if (isAttack) {
-                            offensiveMovesCount++;
-                             // --- Safety Check: Ensure targetPiece exists before accessing rank ---
-                            let targetRank = targetPiece ? (targetPiece.rank || 0) : 0; // Default rank 0 if missing?
-                            if (isOnTrapSquare(move.to)) targetRank = 0;
-                            const currentRank = piece.rank;
-                             // --- Safety Check: Check targetPiece exists again for value lookup ---
-                             const isRatVsElephant = currentRank === 1 && targetPiece && targetPiece.rank === 8;
-                            if (isRatVsElephant || currentRank >= targetRank) {
-                                 let capturedValue = targetPiece ? (pieceValues[targetPiece.rank] || 10) : 10; // Use default if targetPiece missing?
-                                 captureBonusFromThisPiece += capturedValue * AI_CAPTURE_BONUS_MULT;
+                            if (isAttack) {
+                                let targetRank = targetPiece ? (targetPiece.rank || 0) : 0;
+                                if (isOnTrapSquare(move.to)) targetRank = 0;
+                                const currentRank = piece.rank;
+                                const isRatVsElephant = currentRank === 1 && targetPiece && targetPiece.rank === 8;
+                                if (isRatVsElephant || currentRank >= targetRank) {
+                                     let capturedValue = targetPiece ? (pieceValues[targetPiece.rank] || 10) : 10;
+                                     captureBonusFromThisPiece += capturedValue * AI_CAPTURE_BONUS_MULT;
+                                }
                             }
-                        } else if (isForward) { offensiveMovesCount++; }
+                        }
                     }
-                    const offensiveMobilityBonus = offensiveMovesCount * AI_OFFENSIVE_MOBILITY_BONUS_MULT;
 
 
                     // --- Evaluate AI PIECES ---
                     if (piece.player === playerForMax) {
                         maxPieceCount++;
                         score += pieceScore;
-                        score += offensiveMobilityBonus;
-                        score += captureBonusFromThisPiece;
+                        // Mobility bonus is now added globally, not per piece
+                        score += captureBonusFromThisPiece; // Add potential capture value
 
-                        // Bonus for making a necessary hungry attack
-                        if (madeHungryAttack) { // Check the flag set during move calculation
-                            score += AI_CLEAR_HUNGER_ATTACK_BONUS;
-                        }
-
-                        // A) Den Proximity Bonus (VERY HIGH)
+                        // A) Den Proximity Bonus
                         if (adjacentToMinDen.includes(coords)) {
                             score += AI_DEN_PROXIMITY_BONUS_SQ;
-                            // --- Safety Check: Check piece exists before checking isHungry ---
-                            if (piece && !piece.isHungry && isValidMove(coords, minDen, piece, boardState, true).valid) {
-                               score += AI_WIN_SCORE / AI_WIN_ADJACENT_BONUS_FACTOR; // Use factor
-                            }
-                        } else if (twoSquaresFromMinDen.has(coords)) {
-                             score += AI_DEN_PROXIMITY_BONUS_2SQ;
-                        }
+                            if (piece && !piece.isHungry && isValidMove(coords, minDen, piece, boardState, true).valid) { score += AI_WIN_SCORE / AI_WIN_ADJACENT_BONUS_FACTOR; }
+                        } else if (twoSquaresFromMinDen.has(coords)) { score += AI_DEN_PROXIMITY_BONUS_2SQ; }
 
-                        // B) Advancement & Positional Bonuses (Piece Specific)
+                        // B) Advancement & Positional Bonuses
                         const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (rc.row) : (ROWS - 1 - rc.row);
                         const isPastRiver = (playerForMax === PLAYERS.YELLOW && rc.row > riverRowEnd) || (playerForMax === PLAYERS.ORANGE && rc.row < riverRowStart);
                         const defensiveRowThreshold = playerForMax === PLAYERS.YELLOW ? 6 : 2;
 
                         if (isWolfOrCat) {
-                            score += rowsAdvanced * AI_WOLF_CAT_ADVANCE_PENALTY_MULT; // Negative multiplier!
-                            if ((isEarlyGame || isMidGame) && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) {
-                                 score += AI_WOLF_CAT_DEFENSE_BONUS;
-                            }
-                            const isBlockingRow = (playerForMax === PLAYERS.YELLOW && (rc.row === riverRowEnd + 1 || rc.row === riverRowEnd + 2)) ||
-                                                  (playerForMax === PLAYERS.ORANGE && (rc.row === riverRowStart - 1 || rc.row === riverRowStart - 2));
+                            score += rowsAdvanced * AI_WOLF_CAT_ADVANCE_PENALTY_MULT;
+                            if ((isEarlyGame || isMidGame) && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) { score += AI_WOLF_CAT_DEFENSE_BONUS; }
+                            const isBlockingRow = (playerForMax === PLAYERS.YELLOW && (rc.row === riverRowEnd + 1 || rc.row === riverRowEnd + 2)) || (playerForMax === PLAYERS.ORANGE && (rc.row === riverRowStart - 1 || rc.row === riverRowStart - 2));
                             const isBlockingCol = jumpLandingCols.includes(rc.col);
-                            if (backRowJumpersExist && isBlockingRow && isBlockingCol) {
-                                score += AI_BLOCKING_JUMPER_PENALTY; // Drastic penalty
-                            }
+                            if (backRowJumpersExist && isBlockingRow && isBlockingCol) { score += AI_BLOCKING_JUMPER_PENALTY; }
                         } else {
-                            // General Advancement for non-Wolf/Cat
                             score += rowsAdvanced * AI_ADVANCE_BONUS_MULT; // Base advancement for others
-                            // Piece Specific Offensive Bonuses
-                            if (piece.rank === 7 || piece.rank === 6) score += rowsAdvanced * AI_JUMPER_OFFENSE_BONUS; // Jumpers
-                            if (piece.rank === 5) score += rowsAdvanced * AI_LEOPARD_OFFENSE_BONUS; // Leopard
-                            if (piece.rank === 3) score += rowsAdvanced * AI_DOG_OFFENSE_BONUS;     // Dog
-                            if (piece.rank === 1) score += rowsAdvanced * AI_RAT_OFFENSE_BONUS;      // Rat
-                            // General defensive penalty only for non-Wolf/Cat/Elephant
-                            if (isEarlyGame && piece.rank !== 8 && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) {
-                                 score += AI_PIECE_TOO_DEFENSIVE_PENALTY;
-                            }
+                            if (piece.rank === 7 || piece.rank === 6) score += rowsAdvanced * AI_JUMPER_OFFENSE_BONUS;
+                            if (piece.rank === 5) score += rowsAdvanced * AI_LEOPARD_OFFENSE_BONUS;
+                            if (piece.rank === 3) score += rowsAdvanced * AI_DOG_OFFENSE_BONUS;
+                            if (piece.rank === 1) score += rowsAdvanced * AI_RAT_OFFENSE_BONUS;
+                            if (isEarlyGame && piece.rank !== 8 && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) { score += AI_PIECE_TOO_DEFENSIVE_PENALTY; }
                         }
 
                         // C) Past River & Center Control Bonus
@@ -4838,109 +4786,78 @@
                         }
 
                         // D) Water Control Bonus
-                        if ((piece.rank === 1 || piece.rank === 3) && WATER_SQUARES.has(coords)) {
-                            score += AI_WATER_CONTROL_BONUS; // Increased
-                        }
+                        if ((piece.rank === 1 || piece.rank === 3) && WATER_SQUARES.has(coords)) { score += AI_WATER_CONTROL_BONUS; }
 
                         // E) Near Opponent Den General Bonus
                         const nearThreshold = playerForMax === PLAYERS.YELLOW ? 2 : 6;
-                         if ((playerForMax === PLAYERS.YELLOW && rc.row <= nearThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= nearThreshold)) {
-                            maxPiecesNearOppDen++;
-                            score += AI_NEAR_OPP_DEN_BONUS;
-                        }
+                         if ((playerForMax === PLAYERS.YELLOW && rc.row <= nearThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= nearThreshold)) { maxPiecesNearOppDen++; score += AI_NEAR_OPP_DEN_BONUS; }
 
-                        // F) Trap Safety/Danger (Heavily Penalize Landing on Guarded Trap)
+                        // F) Trap Safety/Danger (Penalize Landing on Guarded Trap Heavily)
                         if (isOnTrapSquare(coords)) {
                              const adjacent = getAdjacentCoords(coords);
                              let isTrapGuarded = false;
                              for(const adjCoord of adjacent) {
                                 const adjPiece = boardState[adjCoord];
-                                // Check if opponent exists, is adjacent, AND CAN CAPTURE the trapped piece (rank 0)
-                                if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) {
-                                    isTrapGuarded = true;
-                                    break;
-                                }
+                                if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) { isTrapGuarded = true; break; }
                              }
                              if (isTrapGuarded) {
-                                 // Apply a penalty almost equivalent to losing the piece
-                                 score -= (pieceValues[piece.rank] || 20) * 1.8; // Penalty ~1.8x piece value (Increased)
+                                 score -= (pieceValues[piece.rank] || 20) * 1.8; // Penalty ~1.8x piece value
                                  score += AI_TRAP_DANGER_PENALTY; // Add base penalty too
-                                 // console.log(`[Eval] Applied Guarded Trap Penalty for ${piece.rank}@${coords}`);
                              } else {
-                                 // Still apply a smaller penalty for just being on a trap
-                                score += AI_TRAP_DANGER_PENALTY / 3; // e.g., -50
+                                score += AI_TRAP_DANGER_PENALTY / 3; // Smaller penalty for unguarded trap
                              }
                         } else { // Check vulnerability TO a trap attack
                              const adjacent = getAdjacentCoords(coords);
                              for(const adjCoord of adjacent) {
                                 const adjPiece = boardState[adjCoord];
-                                 // --- Safety Check ---
                                 if(adjPiece?.player === opponent) {
                                     const trapsNearOpponent = getAdjacentCoords(adjCoord).filter(c => isOnTrapSquare(c));
                                     for (const trapCoord of trapsNearOpponent) {
                                         if (trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
-                                            // --- Safety Check: Check piece exists before rank compare ---
                                             const canCaptureFromTrap = piece && (adjPiece.rank >= piece.rank || (adjPiece.rank === 1 && piece.rank === 8 && !WATER_SQUARES.has(trapCoord)));
                                             if(canCaptureFromTrap) { score += AI_TRAP_ATTACK_VULNERABILITY; break; }
                                         }
                                     }
                                 }
-                                 // --- Safety Check: Adjusted condition to prevent infinite loop/error ---
-                                 if (score <= (AI_LOSE_SCORE / 1.5)) break; // Exit if score is already very low
+                                 if (score <= (AI_LOSE_SCORE / 1.5)) break;
                              }
                         }
 
-                        // G) Bonus for being near opponent's traps
+                        // G) Bonus near opponent's traps
                         if (adjacentToMinTraps.has(coords)) score += AI_NEAR_OPP_TRAP_BONUS;
 
                         // H) Bonus/Penalty based on Threats
                          let isThreateningOpponent = false;
-                         for(const move of pieceMoves){
-                             // --- Safety Check ---
-                             if(move && boardState[move.to]?.player === opponent) { isThreateningOpponent = true; break; } }
-                         if(isThreateningOpponent) score += AI_THREATENS_OPPONENT_BONUS; // High bonus
-                        // Apply HEAVY penalty if piece is threatened
-                        if (threatsTo[coords]) score += AI_IS_THREATENED_PENALTY; // Significantly Increased Penalty
+                         for(const move of pieceMoves){ if(move && boardState[move.to]?.player === opponent) { isThreateningOpponent = true; break; } }
+                         if(isThreateningOpponent) score += AI_THREATENS_OPPONENT_BONUS;
+                         // Apply HEAVY penalty if piece is threatened
+                         if (threatsTo[coords]) score += AI_IS_THREATENED_PENALTY; // Increased Penalty
 
 
-                        // --- NEW: Penalize Moves that Force Fatal Trap Captures ---
-                        // Check if the current state resulted from the AI moving the piece now at 'coords'
-                         if (originalPieceIfMove && originalPieceIfMove.to === coords) {
-                             // Check if *this specific piece* at 'coords' is now hungry
-                             // Need to call declareHungryAnimals specifically for this piece/state
-                             const { hungryPiecesMap: currentHungerMap } = declareHungryAnimals(playerForMax, boardState, true);
-                             const isNowHungry = !!currentHungerMap[coords];
-
-                             if (isNowHungry) {
-                                 // Find the forced attack move(s) for this piece from its current position 'coords'
-                                 const forcedAttacks = allMyMoves.filter(m => m && m.from === coords && boardState[m.to]?.player === opponent);
-                                 for (const forcedAttack of forcedAttacks) {
-                                     // --- Safety Check ---
-                                     if (!forcedAttack || !forcedAttack.to) continue;
-                                     const targetSquare = forcedAttack.to;
-                                     // Is the target square a trap?
-                                     if (isOnTrapSquare(targetSquare)) {
-                                         // Is that trap square guarded? Check pieces adjacent to the *target* trap
-                                         const targetAdjacent = getAdjacentCoords(targetSquare);
-                                         let isTargetTrapGuarded = false;
-                                         for (const adjToTarget of targetAdjacent) {
-                                             const guardPiece = boardState[adjToTarget];
-                                             // Check if opponent piece exists and can capture the AI piece *on the trap*
-                                             if (guardPiece?.player === opponent && isValidMove(adjToTarget, targetSquare, guardPiece, boardState, true).valid) {
-                                                isTargetTrapGuarded = true;
-                                                break;
-                                             }
+                         // --- NEW: Penalize state if HUNGRY and ONLY attack leads to GUARDED TRAP ---
+                         if (piece.isHungry) { // Check if the piece *in this state* is hungry
+                             const attacks = pieceMoves.filter(m => m && boardState[m.to]?.player === opponent);
+                             if (attacks.length === 1) { // Is there exactly one attack option?
+                                 const forcedAttack = attacks[0];
+                                 const targetSquare = forcedAttack.to;
+                                 if (isOnTrapSquare(targetSquare)) { // Is that option onto a trap?
+                                      // Is the target trap guarded?
+                                     const targetAdjacent = getAdjacentCoords(targetSquare);
+                                     let isTargetTrapGuarded = false;
+                                     for (const adjToTarget of targetAdjacent) {
+                                         const guardPiece = boardState[adjToTarget];
+                                         if (guardPiece?.player === opponent && isValidMove(adjToTarget, targetSquare, guardPiece, boardState, true).valid) {
+                                             isTargetTrapGuarded = true; break;
                                          }
-                                         if (isTargetTrapGuarded) {
-                                             score += AI_FORCED_TRAP_DEATH_PENALTY; // Apply heavy penalty
-                                             // console.log(`[Eval] Applied Forced Trap Death Penalty for move leading to ${coords} (Forced attack to guarded ${targetSquare})`);
-                                             break; // Apply penalty once for this piece
-                                         }
+                                     }
+                                     if (isTargetTrapGuarded) {
+                                         score += AI_HUNGER_FORCES_TRAP_DEATH_PENALTY; // Apply heavy penalty TO THIS STATE
+                                         // console.log(`[Eval] Applied Hunger Forced Trap Death Penalty for ${piece.rank}@${coords} (Forced attack to guarded ${targetSquare})`);
                                      }
                                  }
                              }
                          }
-                         // --- END Fatal Trap Check ---
+                         // --- END Forced Trap Death Check ---
 
 
                     }
@@ -4948,30 +4865,27 @@
                     else {
                         minPieceCount++;
                         score -= pieceScore;
-                        score -= offensiveMobilityBonus; // Subtract opponent's offensive potential
+                        // Opponent mobility penalty applied globally
 
                         // Subtract opponent threat bonus (Penalize AI if opponent threatens AI pieces)
                          let opponentIsThreatening = false;
-                         const oppPieceMoves = allOpponentMoves.filter(m => m && m.from === coords); // Check m exists
-                         for(const oppMove of oppPieceMoves){
-                             // --- Safety Check ---
-                             if(oppMove && boardState[oppMove.to]?.player === playerForMax){ opponentIsThreatening = true; break; } }
-                         if(opponentIsThreatening) score -= AI_THREATENS_OPPONENT_BONUS; // High penalty
+                         const oppPieceMoves = allOpponentMoves.filter(m => m && m.from === coords);
+                         for(const oppMove of oppPieceMoves){ if(oppMove && boardState[oppMove.to]?.player === playerForMax){ opponentIsThreatening = true; break; } }
+                         if(opponentIsThreatening) score -= AI_THREATENS_OPPONENT_BONUS;
 
 
-                        // 1. Immediate Threat Penalty (Opponent near AI Den)
+                        // 1. Immediate Threat Penalty
                         const isOnMaxTrap = maxTraps.has(coords);
                         const isAdjacentToMaxDen = adjacentToMaxDen.includes(coords);
                         if (isAdjacentToMaxDen || isOnMaxTrap) {
-                            score += AI_NEAR_OWN_DEN_PENALTY; // Very Low Penalty
-                             // --- Safety Check: Ensure piece exists before isHungry ---
+                            score += AI_NEAR_OWN_DEN_PENALTY;
                              if (piece && !piece.isHungry && isValidMove(coords, maxDen, piece, boardState, true).valid) {
-                                 score += AI_IMMEDIATE_WIN_THREAT_PENALTY; // High actual win threat penalty
+                                 score += AI_IMMEDIATE_WIN_THREAT_PENALTY;
                              }
                         }
                          // Reward AI if opponent piece IS threatened by AI
                          if (threatenedBy[coords]) {
-                             score -= AI_IS_THREATENED_PENALTY; // Add reward (Subtract negative penalty)
+                             score -= AI_IS_THREATENED_PENALTY; // Add reward (subtract large negative penalty)
                          }
                     }
                 } catch (e) {
