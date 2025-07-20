@@ -1322,6 +1322,11 @@
 
     <!-- Turn Start Sound -->
     <audio id="turn-start-sound" src="https://staticjw.com/clesto/play/notification-alert.mp3" preload="auto"></audio>
+    <audio id="capture-sound" src="https://staticjw.com/clesto/play/capture.mp3" preload="auto"></audio>
+    <audio id="error-sound" src="https://staticjw.com/clesto/play/error.mp3" preload="auto"></audio>
+    <audio id="hungry-warning-sound" src="https://staticjw.com/clesto/play/hungry-warning.mp3" preload="auto"></audio>
+    <audio id="undo-sound" src="https://staticjw.com/clesto/play/undo-move.mp3" preload="auto"></audio>
+    <audio id="win-sound" src="https://staticjw.com/clesto/play/win.mp3" preload="auto"></audio>
 
     <script>
     window.addEventListener('load', () => { // Changed from DOMContentLoaded
@@ -1349,7 +1354,11 @@
         // --- DOM Element References (Add Tooltip) ---
         const sharedMoveTooltip = document.getElementById('move-log-tooltip');
         const turnSoundElement = document.getElementById('turn-start-sound');
-
+        const captureSoundElement = document.getElementById('capture-sound');
+        const errorSoundElement = document.getElementById('error-sound');
+        const hungryWarningSoundElement = document.getElementById('hungry-warning-sound');
+        const undoSoundElement = document.getElementById('undo-sound');
+        const winSoundElement = document.getElementById('win-sound');
 
         // --- Console Override & Debug Panel Logic ---
         // Store original console methods
@@ -1358,6 +1367,25 @@
             warn: console.warn,
             error: console.error
         };
+
+        /** // NEW Helper function to play sounds safely
+         * Plays the specified sound effect element.
+         * Resets playback position and handles potential browser errors.
+         * @param {HTMLAudioElement|null} soundElement - The audio element to play.
+         * @param {string} soundName - A descriptive name for logging purposes.
+         */
+        function playSound(soundElement, soundName = 'Sound') {
+            if (soundElement) {
+                soundElement.currentTime = 0; // Rewind to start
+                soundElement.play().catch(error => {
+                    // Log warning but don't halt execution
+                    console.warn(`${soundName} playback failed:`, error);
+                    // Common reason: Browser blocked autoplay before user interaction
+                });
+            } else {
+                console.warn(`Attempted to play non-existent sound element: ${soundName}`);
+            }
+        }
 
         /**
          * Formats console arguments into a single string, handling objects and circular references.
@@ -1562,43 +1590,45 @@
             orange: 'd1', // Orange's Den
             yellow: 'd9' // Yellow's Den
         };
-        const MINIMAX_DEPTH = 3; // Depth for AI search (higher = stronger but slower)
+        const MINIMAX_DEPTH = 6; // Depth for AI search (higher = stronger but slower)
 
-        // --- AI Evaluation Constants (Tunable - Aggressive + Threat Aware) ---
+        // --- AI Evaluation Constants (Tunable - More Aggressive) ---
         const AI_WIN_SCORE = 10000;
         const AI_LOSE_SCORE = -10000;
         // --- Offensive Bonuses ---
-        const AI_ADVANCE_BONUS_MULT = 2.5;   // Base bonus per row advanced (Moderate)
-        const AI_PAST_RIVER_BONUS = 20;      // Bonus for crossing river
-        const AI_NEAR_OPP_DEN_BONUS = 80;    // Bonus for AI near opponent's den
-        const AI_DEN_PROXIMITY_BONUS_SQ = 650; // HUGE Bonus for being 1 square away (Increased)
-        const AI_DEN_PROXIMITY_BONUS_2SQ = 220; // Large Bonus for being 2 squares away (Increased)
+        const AI_ADVANCE_BONUS_MULT = 4.0;   // Base bonus per row advanced (Increased)
+        const AI_PAST_RIVER_BONUS = 30;      // Bonus for crossing river (Increased)
+        const AI_NEAR_OPP_DEN_BONUS = 120;   // Bonus for AI near opponent's den (Increased)
+        const AI_DEN_PROXIMITY_BONUS_SQ = 800; // HUGE Bonus for being 1 square away (Increased)
+        const AI_DEN_PROXIMITY_BONUS_2SQ = 300; // Large Bonus for being 2 squares away (Increased)
         const AI_WIN_ADJACENT_BONUS_FACTOR = 1.2; // Multiplier for Win Score (Strong)
         const AI_MULTI_ATTACKER_BONUS = 50;  // Bonus for multiple pieces near opponent den
         const AI_NEAR_OPP_TRAP_BONUS = 15;   // Bonus for AI near opponent's traps (offense)
-        const AI_OFFENSIVE_MOBILITY_BONUS_MULT = 0.8; // Bonus per FORWARD/ATTACK move (Moderate)
+        const AI_OFFENSIVE_MOBILITY_BONUS_MULT = 1.5; // Bonus per FORWARD/ATTACK move (Increased)
         const AI_CENTER_CONTROL_BONUS = 10;  // Bonus for controlling c,d,e columns past river
         const AI_JUMPER_OFFENSE_BONUS = 50;  // Extra bonus for Lion/Tiger advancing
         const AI_LEOPARD_OFFENSE_BONUS = 40; // Extra bonus for Leopard advancing
         const AI_DOG_OFFENSE_BONUS = 40;     // Extra bonus for Dog advancing
         const AI_RAT_OFFENSE_BONUS = 35;     // Extra bonus for Rat advancing
-        const AI_THREATENS_OPPONENT_BONUS = 70; // Bonus for threatening a capture next turn (High)
-        const AI_CAPTURE_BONUS_MULT = 1.6;   // Multiplier for captured piece value (VERY HIGH)
+        const AI_THREATENS_OPPONENT_BONUS = 100; // Bonus for threatening a capture next turn (Increased)
+        const AI_CAPTURE_BONUS_MULT = 2.0;   // Multiplier for captured piece value (Increased)
         const AI_WATER_CONTROL_BONUS = 30;   // Bonus for Rat/Dog on water
         const AI_CLEAR_HUNGER_ATTACK_BONUS = 150; // Specific bonus for making a required hungry attack
-        const AI_FORCED_TRAP_DEATH_PENALTY = -1500; // Penalty for moving such that hunger forces capture onto a guarded trap (NEW)
-        const AI_HUNGER_FORCES_TRAP_DEATH_PENALTY = -1800; // Severe penalty for being hungry where only attack leads to guarded trap death (NEW)
+        const AI_FORCED_TRAP_DEATH_PENALTY = -1500; // Penalty for moving such that hunger forces capture onto a guarded trap
+        const AI_HUNGER_FORCES_TRAP_DEATH_PENALTY = -1800; // Severe penalty for being hungry where only attack leads to guarded trap death
+        // *** ADDED MISSING CONSTANT HERE ***
+        const AI_FORWARD_POSITION_BONUS = 15; // Flat bonus for being on opponent's side
         // --- Defensive/Strategic Penalties & Wolf/Cat Specific ---
         const AI_IMMEDIATE_WIN_THREAT_PENALTY = -3000; // Opponent can win next turn
         const AI_NEAR_OWN_DEN_PENALTY = -5;          // Opponent piece near AI den
-        const AI_PIECE_TOO_DEFENSIVE_PENALTY = -5;   // General penalty for pieces sitting too far back
+        const AI_PIECE_TOO_DEFENSIVE_PENALTY = 0;   // General penalty for pieces sitting too far back (REMOVED)
         const AI_WOLF_CAT_DEFENSE_BONUS = 10;        // BONUS for Wolf/Cat being defensive early
-        const AI_WOLF_CAT_ADVANCE_PENALTY_MULT = -4.0;// PENALTY per row Wolf/Cat advance (Increased)
+        const AI_WOLF_CAT_ADVANCE_PENALTY_MULT = -3.0;// PENALTY per row Wolf/Cat advance (Slightly Reduced)
         const AI_BLOCKING_JUMPER_PENALTY = -180;     // Penalty for Wolf/Cat blocking jump squares (High)
         const AI_TRAP_DANGER_PENALTY = -200;         // AI piece vulnerable ON a trap
         const AI_TRAP_ATTACK_VULNERABILITY = -110;   // AI piece vulnerable TO a trap attack
         const AI_IS_THREATENED_PENALTY = -50;       // Penalty if AI piece can be captured next turn (SIGNIFICANTLY INCREASED)
-        const AI_OPPONENT_MOBILITY_PENALTY_MULT = -0.5; // Penalty based on opponent's moves (NEW - Negative value)
+        const AI_OPPONENT_MOBILITY_PENALTY_MULT = -0.5; // Penalty based on opponent's moves
         // --- Piece Values ---
         const AI_PIECE_VALUES = { 1: 45, 2: 5, 3: 50, 4: 20, 5: 45, 6: 75, 7: 85, 8: 70 }; // Lion/Tiger slightly higher than Elephant
 
@@ -2409,89 +2439,74 @@
         }
 
         /**
-         * Handles the Undo button click. Reverts the game state.
+         * Handles the Undo button click. Reverts the game state. Plays undo sound.
          * - In PvP mode: Undoes the single last move made by either player.
          * - In PvE mode: Undoes the last full turn (AI's move + Player's preceding move).
          * Also handles restoring clocks and playing turn sound.
          */
-        function undoMove() {
-            // Prevent undo while AI is processing its turn (only relevant in PvE)
+        function undoMove() { // Added undo sound
             if (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW && boardGridWrapper.style.pointerEvents === 'none') {
                 console.log("Cannot undo while AI is thinking.");
                 updateStatus("Cannot undo while AI is thinking.");
+                playSound(errorSoundElement, "Error Sound"); // Play error sound
                 return;
             }
 
-            // Check if there's anything in the history to undo (minimum depends on mode)
-            const minHistoryLength = isPlayerVsPlayerMode ? 1 : 1; // Need at least 1 state for any undo
+            const minHistoryLength = isPlayerVsPlayerMode ? 1 : 1;
             if (gameHistory.length < minHistoryLength) {
                 console.log("Nothing to undo.");
                 updateStatus("Nothing to undo.");
+                 playSound(errorSoundElement, "Error Sound"); // Play error sound
                 return;
             }
 
-            // --- Pause Clocks Before Undoing ---
+            // --- Play Undo Sound ---
+            playSound(undoSoundElement, "Undo Sound");
+
             pauseAllClocks();
 
             let stateToRestore = null;
 
             if (isPlayerVsPlayerMode) {
-                // --- PvP Logic: Undo 1 move ---
                 console.log("Undoing last PvP move...");
-                stateToRestore = gameHistory.pop(); // Pop the state before the last player's move
+                stateToRestore = gameHistory.pop();
             } else {
-                // --- PvE Logic: Try to undo 2 moves (Player + AI) ---
                 if (gameHistory.length >= 2) {
-                    // We want the state *before* the player's move, which is 2 steps back
                     console.log("Undoing last full turn (Player + AI)...");
-                    gameHistory.pop(); // Pop and discard the state before the AI's move
-                    stateToRestore = gameHistory.pop(); // Pop and restore the state before the Player's move
+                    gameHistory.pop();
+                    stateToRestore = gameHistory.pop();
                 } else if (gameHistory.length === 1) {
-                    // Fallback: Only player's first move exists in history. Undo just that one.
                     console.log("Undoing player's first move (only one in history)...");
                     stateToRestore = gameHistory.pop();
                 }
             }
 
-            // --- Check if a state was successfully retrieved to restore ---
             if (!stateToRestore) {
-                // This case might be hit if history was exactly 1 in PvE and popping failed somehow (unlikely)
-                // Or if history somehow became empty unexpectedly. Safest is to reset.
                 console.error("Undo Error: Could not retrieve a state to restore. History length:", gameHistory.length);
-                initializeGame(); // Reset to initial state as a safe fallback
+                initializeGame();
                 updateStatus("Undo error or history empty. Game reset.");
                 updateUndoButtonState();
-                pauseAllClocks(); // Ensure clocks stopped
+                pauseAllClocks();
                 return;
             }
 
-            // --- Load the determined state ---
             console.log("Loading restored state...");
-            // loadGameState handles restoring board, player, clocks values etc., and updating UI text/displays
             loadGameState(stateToRestore);
 
-            // --- Post-load updates ---
             updateStatus(`Undo successful. ${gameState.currentPlayer.toUpperCase()}'s turn.`);
-            updateUndoButtonState(); // Update button based on new history length
+            updateUndoButtonState();
 
-            // Resume Clock & Play Sound
             if (!gameState.gameOver) {
-                // After undoing in PvE (usually 2 moves), it will always be Orange's turn.
-                // After undoing in PvP (1 move), it could be Orange or Yellow.
-                // After undoing PvE fallback (1 move), it will be Orange's turn.
-                // gameState.currentPlayer reflects the correct player whose turn it now IS.
-                enablePlayerInteraction(); // Ensure interaction is enabled (important after PvE undo)
-                startClock(gameState.currentPlayer); // Start clock for the player whose turn it now is
-                playTurnSound(); // Play sound for the start of their turn
+                enablePlayerInteraction();
+                startClock(gameState.currentPlayer);
+                playSound(turnSoundElement, "Turn Sound"); // Play turn sound after undo
             } else {
-                // If undo results in a game-over state, ensure clocks remain paused.
                 pauseAllClocks();
-                disablePlayerInteraction(); // Ensure interaction disabled if game over
+                disablePlayerInteraction();
             }
-            // Ensure piece accessibility is correct after potential enable/disable calls
             updateAllPieceAccessibility();
 
-        } // End undoMove (Modified Task 14, 17, 28, 29)
+        } // End undoMove
 
         /**
          * Enables or disables the Undo button based on the game history length, game over state, and AI thinking state.
@@ -2753,74 +2768,66 @@
             return null; // Coordinates not found
         }
 
-        /**
+/**
          * Handles the drop event when a piece is released over a target.
-         * Validates the move and calls performMove if valid.
+         * Validates the move and calls performMove if valid. Plays error sound on invalid drop.
          * @param {DragEvent} e - The drop event object.
          */
-        function handleDrop(e) {
+        function handleDrop(e) { // Added error sound
             e.preventDefault();
-            if (!draggedPieceElement) { // Should not happen if dragstart fired correctly
+            if (!draggedPieceElement) {
                 clearHighlights();
                 isDragging = false;
                 return;
             }
 
-            const targetElement = e.target; // The element directly under the cursor on drop
+            const targetElement = e.target;
             let targetCoords = null;
             let targetCell = null;
 
-            // Determine the target coordinates based on what was dropped onto
             const droppedOnPiece = targetElement.closest('.piece');
-            // Case 1: Dropped onto another piece (potential capture)
             if (droppedOnPiece && droppedOnPiece !== draggedPieceElement && droppedOnPiece.dataset.player !== gameState.currentPlayer) {
                 targetCoords = droppedOnPiece.dataset.coords;
                 targetCell = document.getElementById(getCellElementId(targetCoords));
             }
-            // Case 2: Dropped onto a cell
             else {
                 targetCell = targetElement.closest('.cell');
                 if (targetCell) {
                     targetCoords = targetCell.dataset.coords;
                 }
-                // Case 3: Dropped back onto the original piece (treat as drop on original cell)
                 else if (targetElement === draggedPieceElement) {
                     targetCoords = draggedPieceElement.dataset.coords;
                     targetCell = document.getElementById(getCellElementId(targetCoords));
                 }
             }
 
-            // Retrieve the source coordinates (stored during dragstart)
             const dragSourceCoords = draggedPieceElement.dataset.coords || sourceCoords || e.dataTransfer.getData('text/plain');
-            clearHighlights(); // Clean up highlights immediately after drop
+            clearHighlights();
 
-            // Check if drop target is valid
             if (!targetCell || !targetCoords) {
                 console.log("Drop outside valid target.");
                 updateStatus("Invalid drop location.");
-                selectedPieceCoords = null; // Deselect if drop is invalid
+                playSound(errorSoundElement, "Error Sound"); // Play error sound
+                selectedPieceCoords = null;
                 isDragging = false;
-                // Snap piece back to original position if drop is invalid
                 if(draggedPieceElement && dragSourceCoords) positionElementOnBoard(draggedPieceElement, dragSourceCoords);
                 return;
             }
 
-            // Validate the move using game logic
             const validationResult = isValidMove(dragSourceCoords, targetCoords, getPieceData(dragSourceCoords));
 
             if (!validationResult.valid) {
-                // If move is invalid, log reason, update status, and snap piece back
                 console.log(`Drop on invalid target: ${targetCoords}. Reason: ${validationResult.reason}`);
                 updateStatus(`Invalid move: ${validationResult.reason}`);
-                selectedPieceCoords = null; // Deselect
+                playSound(errorSoundElement, "Error Sound"); // Play error sound
+                selectedPieceCoords = null;
                 if(draggedPieceElement && dragSourceCoords) positionElementOnBoard(draggedPieceElement, dragSourceCoords);
             } else {
-                // If move is valid, perform the move
                 console.log(`Performing move via drop from ${dragSourceCoords} to ${targetCoords}`);
                 performMove(dragSourceCoords, targetCoords);
-                selectedPieceCoords = null; // Deselect after successful move
+                selectedPieceCoords = null;
             }
-            isDragging = false; // Reset dragging flag
+            isDragging = false;
         }
 
 
@@ -2912,26 +2919,25 @@
         /**
          * Handles the end of a touch interaction (lifting the finger).
          * Determines if it was a tap (treated like click) or a drag (treated like drop).
+         * Plays error sound on invalid drop.
          * @param {TouchEvent} e - The touch event object.
          */
-        function handleTouchEnd(e) {
-            if (!draggedPieceElement || !sourceCoords) return; // Only if a piece touch was active
+        function handleTouchEnd(e) { // Added error sound
+            if (!draggedPieceElement || !sourceCoords) return;
             e.preventDefault();
 
-            const wasDragging = isDragging; // Store whether a drag occurred
-            isDragging = false; // Reset dragging flag
-            draggedPieceElement.classList.remove('dragging'); // Remove dragging style
-            draggedPieceElement.style.zIndex = '10'; // Restore default z-index
-            draggedPieceElement.style.transform = ''; // Reset translation
+            const wasDragging = isDragging;
+            isDragging = false;
+            draggedPieceElement.classList.remove('dragging');
+            draggedPieceElement.style.zIndex = '10';
+            draggedPieceElement.style.transform = '';
 
-            // Restore smooth CSS transition after a short delay
             setTimeout(() => {
                 if (draggedPieceElement) {
                     draggedPieceElement.style.transition = 'transform 0.3s ease-in-out, box-shadow 0.2s ease, outline 0.2s ease, left 0.3s ease-in-out, top 0.3s ease-in-out';
                 }
              }, 0);
 
-             // If it wasn't a drag, treat it as a tap/click (handled by handlePieceClick)
              if (!wasDragging) {
                  console.log("TouchEnd: Detected as tap/click. Handled by click listener.");
                   draggedPieceElement = null;
@@ -2939,14 +2945,11 @@
                  return;
              }
 
-            // If it was a drag, determine the drop target
             const touch = e.changedTouches[0];
-            // Find element at the touch release point
             const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
             let targetCoords = null;
             let targetCell = null;
 
-            // Determine target similar to handleDrop
             const droppedOnPiece = elementUnderTouch?.closest('.piece');
             if (droppedOnPiece && droppedOnPiece !== draggedPieceElement && droppedOnPiece.dataset.player !== gameState.currentPlayer) {
                 targetCoords = droppedOnPiece.dataset.coords;
@@ -2958,31 +2961,28 @@
                 }
             }
 
-            clearHighlights(); // Remove move highlights
+            clearHighlights();
 
-            // If a valid target cell was found
             if (targetCell && targetCoords) {
                 const validationResult = isValidMove(sourceCoords, targetCoords, getPieceData(sourceCoords));
                 if (validationResult.valid) {
-                    // Perform move if valid
                     console.log(`Performing move via touch from ${sourceCoords} to ${targetCoords}`);
                     performMove(sourceCoords, targetCoords);
-                    selectedPieceCoords = null; // Deselect after move
+                    selectedPieceCoords = null;
                 } else {
-                    // If invalid, snap piece back
                     console.log("Touch end on invalid target:", validationResult.reason);
                     updateStatus(`Invalid move: ${validationResult.reason}`);
+                    playSound(errorSoundElement, "Error Sound"); // Play error sound
                     positionElementOnBoard(draggedPieceElement, sourceCoords);
-                    selectedPieceCoords = null; // Deselect
+                    selectedPieceCoords = null;
                 }
             } else {
-                // If dropped outside a valid target, snap piece back
                 console.log("Touch end outside valid target");
+                playSound(errorSoundElement, "Error Sound"); // Play error sound (dropping outside)
                 positionElementOnBoard(draggedPieceElement, sourceCoords);
-                selectedPieceCoords = null; // Deselect
+                selectedPieceCoords = null;
             }
 
-            // Clean up touch state variables
             draggedPieceElement = null;
             sourceCoords = null;
             console.log("Touch End (Drag)");
@@ -2996,14 +2996,10 @@
          * - Selects/deselects the player's own piece and highlights valid moves.
          * - If a player's piece is already selected, clicking an opponent's piece
          *   directly triggers a move validation and execution attempt (capture).
+         * Plays error sound on invalid capture attempt.
          * @param {MouseEvent} e - The click event object.
          */
-        function handlePieceClick(e) {
-            // Clicks on child elements (like the image) should still be handled here now.
-            // We want the click on the opponent's piece representation to trigger the capture.
-            // console.log("handlePieceClick triggered. Target:", e.target, "CurrentTarget:", e.currentTarget);
-
-            // Ignore clicks during drag or if game is over
+        function handlePieceClick(e) { // Added error sound
             if (isDragging) {
                 console.log("Piece click ignored: Dragging.");
                 return;
@@ -3013,78 +3009,63 @@
                 return;
             }
 
-            // Use currentTarget to get the piece DIV the listener is attached to
             const pieceElement = e.currentTarget;
             if (!pieceElement || !pieceElement.classList.contains('piece')) {
                  console.warn("handlePieceClick: currentTarget is not a valid piece element.", pieceElement);
-                 return; // Should not happen if listener attached correctly
+                 return;
             }
 
-            const clickedCoords = pieceElement.dataset.coords; // Coords of the piece that was clicked
-            const clickedPieceData = getPieceData(clickedCoords); // Data of the piece clicked
+            const clickedCoords = pieceElement.dataset.coords;
+            const clickedPieceData = getPieceData(clickedCoords);
 
-            // --- Scenario 1: A friendly piece is already selected ---
             if (selectedPieceCoords && selectedPieceCoords !== clickedCoords) {
-                const selectedPieceData = getPieceData(selectedPieceCoords); // Data of the *selected* piece
+                const selectedPieceData = getPieceData(selectedPieceCoords);
 
-                // Ensure selected piece data exists (sanity check)
                 if (!selectedPieceData) {
                     console.warn(`handlePieceClick: Data for selected piece ${selectedPieceCoords} not found. Deselecting.`);
                     deselectPiece();
                     return;
                 }
 
-                // Check if the clicked piece is an opponent piece (Capture Attempt)
                 if (clickedPieceData && clickedPieceData.player !== selectedPieceData.player) {
                     console.log(`handlePieceClick: Attempting CAPTURE. Selected: ${selectedPieceCoords}, Clicked Opponent: ${clickedCoords}`);
 
-                    // *** Directly validate and perform the move ***
                     const validationResult = isValidMove(selectedPieceCoords, clickedCoords, selectedPieceData);
                     console.log(`handlePieceClick (Capture): Validation Result =`, JSON.parse(JSON.stringify(validationResult)));
 
                     if (validationResult.valid) {
                         console.log(`--> handlePieceClick (Capture): Validation SUCCESS. Calling performMove(${selectedPieceCoords}, ${clickedCoords})`);
                         performMove(selectedPieceCoords, clickedCoords);
-                        // performMove handles deselecting the piece after a successful move
                     } else {
                         console.log(`--> handlePieceClick (Capture): Validation FAILED: ${validationResult.reason}`);
-                        flashCell(clickedCoords, 'red', 300); // Flash the target piece's cell
+                        flashCell(clickedCoords, 'red', 300);
                         updateStatus(`Invalid move: ${validationResult.reason}`);
-                        // Keep the original piece selected to allow trying a different move.
+                        playSound(errorSoundElement, "Error Sound"); // Play error sound
                     }
-                    return; // Action completed (capture attempt)
+                    return;
                 }
-                // If clicking another friendly piece while one is selected, switch selection
                 else if (clickedPieceData && clickedPieceData.player === selectedPieceData.player) {
                     console.log(`handlePieceClick: Switching selection from ${selectedPieceCoords} to ${clickedCoords}`);
-                    selectPiece(clickedCoords); // selectPiece handles deselecting the old one
-                    return; // Action completed (switched selection)
+                    selectPiece(clickedCoords);
+                    return;
                 }
-                // If clicking an empty square (handled by handleCellClick) or something unexpected
                 else {
                      console.log(`handlePieceClick: Clicked on something unexpected (${clickedCoords}) while ${selectedPieceCoords} was selected. Letting cell handler manage.`);
-                     // Do nothing here, let potential bubble to cell handler occur.
                      return;
                 }
             }
 
-            // --- Scenario 2: No friendly piece is selected, or clicking the selected piece again ---
-            // Check if the clicked piece belongs to the current player
             if (clickedPieceData && clickedPieceData.player === gameState.currentPlayer) {
-                // If clicking the already selected piece, deselect it
                 if (selectedPieceCoords === clickedCoords) {
                     console.log(`handlePieceClick: Deselecting piece ${clickedCoords}`);
                     deselectPiece();
                 }
-                // Otherwise, select the clicked piece
                 else {
                     console.log(`handlePieceClick: Selecting piece ${clickedCoords}`);
-                    selectPiece(clickedCoords); // Selects and highlights moves
+                    selectPiece(clickedCoords);
                 }
             } else if (!selectedPieceCoords) {
-                // If clicking an opponent piece when NOTHING is selected, do nothing.
                 console.log(`handlePieceClick: Clicked opponent piece ${clickedCoords} with no friendly piece selected. Doing nothing.`);
-                // Clear any stray highlights just in case
                 clearHighlights();
             }
 
@@ -3094,16 +3075,14 @@
         /**
          * Handles clicking on a cell. If a piece is selected, attempts to move it to the clicked cell.
          * Ignored if a drag operation is currently happening or no piece is selected.
+         * Plays error sound on invalid move.
          * @param {MouseEvent} e - The click event object.
          */
-        function handleCellClick(e) {
-            // MOVED LOG TO VERY TOP
-            console.log("--- handleCellClick triggered --- Target:", e.target, "CurrentTarget:", e.currentTarget); // Added more detail
+        function handleCellClick(e) { // Added error sound
+            console.log("--- handleCellClick triggered --- Target:", e.target, "CurrentTarget:", e.currentTarget);
 
-            // Use e.currentTarget to ensure we reference the cell the listener is attached to
             const targetCell = e.currentTarget;
 
-            // Basic validation of the target cell itself
             if (!targetCell || !targetCell.classList.contains('cell') || !targetCell.dataset.coords) {
                 console.log("handleCellClick ignored: event.currentTarget is not a valid cell element or missing coords.", targetCell);
                 return;
@@ -3111,7 +3090,6 @@
              const targetCoords = targetCell.dataset.coords;
              console.log(`handleCellClick: Target Cell Coords = ${targetCoords}`);
 
-            // Ignore clicks during drag or if game is over
             if (isDragging) {
                 console.log("handleCellClick ignored: isDragging is true.");
                 return;
@@ -3121,17 +3099,14 @@
                 return;
             }
 
-            // Check if a piece is selected (critical for move/capture attempts)
             if (!selectedPieceCoords) {
                 console.log("handleCellClick ignored: No piece selected (selectedPieceCoords is null/undefined).");
                 return;
             }
             console.log(`handleCellClick: Proceeding. Selected piece = ${selectedPieceCoords}`);
 
-            // Get data for the selected piece
             const pieceToMove = getPieceData(selectedPieceCoords);
 
-            // Safety check for selected piece data
             if (!pieceToMove) {
                 console.warn(`handleCellClick: Selected piece data unexpectedly not found for: ${selectedPieceCoords}. Deselecting.`);
                 deselectPiece();
@@ -3140,22 +3115,19 @@
             }
             console.log(`handleCellClick: Attempting move validation: ${selectedPieceCoords} (${RANK_TO_NAME[pieceToMove.rank]}) -> ${targetCoords}`);
 
-            // Validate the move from the selected piece to the clicked cell
             const validationResult = isValidMove(selectedPieceCoords, targetCoords, pieceToMove);
              console.log(`handleCellClick: Validation Result =`, JSON.parse(JSON.stringify(validationResult)));
 
             if (validationResult.valid) {
-                // Perform the move if valid
                 console.log(`--> handleCellClick: Validation SUCCESS. Calling performMove(${selectedPieceCoords}, ${targetCoords})`);
                 performMove(selectedPieceCoords, targetCoords);
             } else {
-                // If invalid, provide feedback
                 console.log(`--> handleCellClick: Validation FAILED: ${validationResult.reason}`);
                 flashCell(targetCoords, 'red', 300);
                 updateStatus(`Invalid move: ${validationResult.reason}`);
-                // Do not deselect - allow user to try another target cell
+                playSound(errorSoundElement, "Error Sound"); // Play error sound
             }
-            console.log("--- /handleCellClick finished ---"); // Log exit
+            console.log("--- /handleCellClick finished ---");
         }
 
         /**
@@ -3376,56 +3348,48 @@
          * handling captures, checking for win/loss conditions, managing hungry/starve rules,
          * logging the move, checking for repetition/stalemate, switching the player,
          * potentially triggering the AI, and managing last move highlights and clocks.
-         * Correctly appends 'x' for each starved piece in notation. // <-- Updated comment (Task 33)
+         * Plays capture, hungry warning, and win sounds.
          * @param {string} fromCoords - The starting coordinates of the move.
          * @param {string} toCoords - The ending coordinates of the move.
          */
-        function performMove(fromCoords, toCoords) { // Task 17 & 28 Change
-            const piece = getPieceData(fromCoords); // Get data *before* state change
-
-            // --- Pre-move validation and setup ---
+        function performMove(fromCoords, toCoords) { // Added capture, hungry, win sounds
+            const piece = getPieceData(fromCoords);
             if (!piece || piece.player !== gameState.currentPlayer || gameState.gameOver) {
                 console.error("Invalid move attempt condition in performMove.");
                 updateStatus("Cannot move now.");
                 return;
             }
-            const playerWhoMoved = gameState.currentPlayer; // Store player before any state changes
-            // --- Define opponent early (Fix for Task 34 ReferenceError) ---
+            const playerWhoMoved = gameState.currentPlayer;
             const opponent = playerWhoMoved === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
 
-            // --- Clear Previous Highlight for Current Player ---
             clearPlayerLastMoveHighlight(playerWhoMoved);
 
-            // Use a fresh copy of piece data for validation to avoid potential mutation issues
             const validationResult = isValidMove(fromCoords, toCoords, { ...piece });
             if (!validationResult.valid) {
                 console.log(`Invalid move attempt in performMove: ${validationResult.reason}`);
                 updateStatus(`Invalid move: ${validationResult.reason}`);
                 flashCell(toCoords, 'red');
-                // --- Re-apply highlight if move fails ---
-                highlightLastMoves(); // Re-apply previous highlights if move invalid
+                playSound(errorSoundElement, "Error Sound"); // Error sound for internal validation failure too
+                highlightLastMoves();
                 return;
             }
 
-            // --- Save State & Clear UI ---
-            saveGameState(); // Save state *after* clearing highlight but *before* making changes
-            clearHighlights(); // General selection highlights (keep this)
-            deselectPiece(); // Deselect piece visually
+            saveGameState();
+            clearHighlights();
+            deselectPiece();
 
-            // --- Execute the move ---
-            const targetPiece = getPieceData(toCoords); // Check for piece at destination *before* state change
+            const targetPiece = getPieceData(toCoords);
             const isAttack = !!targetPiece;
-            let notation = `${RANK_TO_CODE[piece.rank]}`; // Start notation with Rank
+            let notation = `${RANK_TO_CODE[piece.rank]}`;
             let statusAction = "";
 
-            // --- Handle Starvation BEFORE the move ---
             const starvedPiecesCoords = checkAndApplyStarvation(fromCoords, isAttack);
 
-            // --- Handle Capture (if applicable) ---
             if (isAttack) {
                 console.log(`${playerWhoMoved} ${RANK_TO_NAME[piece.rank]} at ${fromCoords} captures ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]} at ${toCoords}`);
-                notation += 'x'; // Add 'x' for capture AFTER the rank
+                notation += 'x';
                 statusAction = ` captures ${RANK_TO_NAME[targetPiece.rank]} at ${toCoords}`;
+                playSound(captureSoundElement, "Capture Sound"); // Play capture sound
                 const capturedElement = document.getElementById(getPieceElementId(toCoords));
                 if (capturedElement) {
                     const capturedIndicator = capturedElement.querySelector('.trap-rank-indicator.visible');
@@ -3435,85 +3399,71 @@
                 }
             }
 
-            // --- Update Game State Board ---
             const pieceDataToMove = JSON.parse(JSON.stringify(piece));
-            pieceDataToMove.isHungry = piece.isHungry; // Carry over hungry status
-            gameState.board[toCoords] = pieceDataToMove; // Place piece data at the new location
-            delete gameState.board[fromCoords]; // Remove piece data from the old location
+            pieceDataToMove.isHungry = piece.isHungry;
+            gameState.board[toCoords] = pieceDataToMove;
+            delete gameState.board[fromCoords];
 
-            // --- Update Piece DOM Element ---
-            // Find the element using its ORIGINAL ID (before the move)
             const pieceElement = document.getElementById(getPieceElementId(fromCoords));
             if (pieceElement) {
-                // Update the element's ID to match its new coordinates
                 pieceElement.id = getPieceElementId(toCoords);
                 pieceElement.setAttribute('aria-label', `${playerWhoMoved} ${RANK_TO_NAME[piece.rank]} at ${toCoords}`);
-                // Visually move the piece on the board
-                positionElementOnBoard(pieceElement, toCoords); // This updates element's position & dataset.coords
+                positionElementOnBoard(pieceElement, toCoords);
 
-                // Update Trap Indicator Visual
                 const movedPieceData = gameState.board[toCoords];
                 if (movedPieceData) {
                     const isNowOnTrap = isOnTrapSquare(toCoords);
                     updateTrapIndicatorVisual(toCoords, isNowOnTrap, pieceElement);
                 } else {
                     console.warn(`performMove: Piece data not found at destination ${toCoords} after move, cannot update trap indicator.`);
-                    updateTrapIndicatorVisual(toCoords, false, pieceElement); // Attempt to clear visually
+                    updateTrapIndicatorVisual(toCoords, false, pieceElement);
                 }
 
-                // Update Attacker's Hungry Status After Capture
                  if (isAttack) {
-                     const attackerPieceData = gameState.board[toCoords]; // Re-fetch data from final location
+                     const attackerPieceData = gameState.board[toCoords];
                      if (attackerPieceData) {
-                         attackerPieceData.isHungry = false; // Attacker is no longer hungry
+                         attackerPieceData.isHungry = false;
                          console.log(`Attacker ${RANK_TO_NAME[attackerPieceData.rank]}@${toCoords} state set to not hungry.`);
-                         updateHungryVisual(toCoords, false, pieceElement); // Update visual using the element
+                         updateHungryVisual(toCoords, false, pieceElement);
                      }
                 }
-                // Accessibility update happens AFTER player switch usually, or via updateUI()
-
             } else {
-                // Fallback if element somehow missing - redraw all pieces
                 console.error(`!!! Piece element not found for move ${fromCoords} -> ${toCoords}! Could not update DOM element. Re-placing all pieces.`);
-                placePieces(); // Less efficient, but ensures consistency
+                placePieces();
             }
 
-            // --- Complete Move Notation (Destination, Hungry, Starvation) ---
-            notation += toCoords; // Add destination coordinates
+            notation += toCoords;
 
-            // --- Declare Hungry Animals for the *Next* Player ---
-            // Opponent is now defined, so this block is safe
             const { hungryCount, hungryPiecesMap } = declareHungryAnimals(opponent);
              Object.keys(gameState.board).forEach(coords => {
                  const p = gameState.board[coords];
-                 // No need to redefine opponent here
-                 if (p && p.player === opponent) { // Use the opponent variable
+                 if (p?.player === opponent) { // Added ?. check
                      const isNowHungry = !!hungryPiecesMap[coords];
                      p.isHungry = isNowHungry;
                      updateHungryVisual(coords, isNowHungry);
                  }
              });
-            if (hungryCount > 0) { notation += '+'.repeat(hungryCount); } // Add hungry markers
+            if (hungryCount > 0) {
+                notation += '+'.repeat(hungryCount);
+                playSound(hungryWarningSoundElement, "Hungry Warning Sound"); // Play hungry sound
+            }
 
-            // --- Add 'x' for each Starvation (Task 33 Fix) ---
             if (starvedPiecesCoords.length > 0) {
-                notation += 'x'.repeat(starvedPiecesCoords.length); // Append 'x' for each starved piece
-                // Update status message
+                notation += 'x'.repeat(starvedPiecesCoords.length);
                 statusAction += ` (${starvedPiecesCoords.length} animal${starvedPiecesCoords.length > 1 ? 's' : ''} starved)`;
                 console.log(`Applying Clesto rule: Starvation occurred. Appending ${starvedPiecesCoords.length} 'x' to notation: ${notation}`);
             }
 
-            // --- Check Win Conditions ---
-            // Opponent variable is already defined
             const opponentDen = playerWhoMoved === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
             if (toCoords === opponentDen) {
                 gameState.winner = playerWhoMoved; gameState.gameOver = true;
                 updateStatus(`${playerWhoMoved.toUpperCase()} wins by reaching the den!${statusAction}`);
                 logMove(notation, playerWhoMoved); logBoardState(); updateUI(); disablePlayerInteraction();
                 pauseAllClocks();
-                updateUndoButtonState(); return;
+                updateUndoButtonState();
+                playSound(winSoundElement, "Win Sound"); // Play win sound
+                return;
             }
-            // Check elimination win
             let opponentPieceCount = 0;
             for (const coords in gameState.board) { if (gameState.board[coords]?.player === opponent) { opponentPieceCount++; } }
             if (opponentPieceCount === 0) {
@@ -3521,57 +3471,52 @@
                 updateStatus(`${playerWhoMoved.toUpperCase()} wins by eliminating all opponent pieces!${statusAction}`);
                 logMove(notation, playerWhoMoved); logBoardState(); updateUI(); disablePlayerInteraction();
                 pauseAllClocks();
-                updateUndoButtonState(); return;
+                updateUndoButtonState();
+                playSound(winSoundElement, "Win Sound"); // Play win sound
+                return;
             }
 
-            // --- Log the Final Move & Board State ---
-            logMove(notation, playerWhoMoved); // Log the fully constructed notation
+            logMove(notation, playerWhoMoved);
             const boardStateString = logBoardState();
 
-            // --- Store This Move for Highlighting ---
             playerLastMoves[playerWhoMoved] = { from: fromCoords, to: toCoords };
-            highlightLastMoves(); // Apply highlights immediately *before* switching clocks/player
+            highlightLastMoves();
 
-            // --- Switch Clocks (BEFORE switching player) ---
             switchClocks(playerWhoMoved);
 
-            // --- Check Draw/Loss Conditions (Stalemate first, then Repetition) ---
-            if (checkForStalemate(opponent)) { // opponent is defined
-                gameState.winner = playerWhoMoved; // Stalemate = loss for opponent, win for current player
+            if (checkForStalemate(opponent)) {
+                gameState.winner = playerWhoMoved; // Stalemate = win for current player
                 gameState.gameOver = true;
                 updateStatus(`Stalemate! ${opponent.toUpperCase()} has no valid moves. ${playerWhoMoved.toUpperCase()} wins!`);
                 disablePlayerInteraction(); updateUI();
                 pauseAllClocks();
-                updateUndoButtonState(); return;
+                updateUndoButtonState();
+                playSound(winSoundElement, "Win Sound"); // Play win sound (stalemate win)
+                return;
             }
 
-            // --- Switch Player and Update UI ---
-            gameState.currentPlayer = opponent; // Switch to the opponent (defined earlier)
-            if (playerWhoMoved === PLAYERS.YELLOW) { gameState.turnNumber++; } // Increment turn after Yellow moves
-            updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn.${statusAction}`); // Update status for the new current player
-            updateUI(); // Includes accessibility update
-            updateUndoButtonState(); // Update based on new state
+            gameState.currentPlayer = opponent;
+            if (playerWhoMoved === PLAYERS.YELLOW) { gameState.turnNumber++; }
+            updateStatus(`${gameState.currentPlayer.toUpperCase()}'s turn.${statusAction}`);
+            updateUI();
+            updateUndoButtonState();
 
-            // --- Play Turn Sound ---
-            if (!gameState.gameOver) { // Don't play sound if game just ended
-                playTurnSound(); // Play sound for the player whose turn it now is (Task 28)
+            if (!gameState.gameOver) {
+                 playSound(turnSoundElement, "Turn Sound"); // Play turn sound for next player
             }
 
-            // --- Trigger AI if applicable ---
             if (!isPlayerVsPlayerMode && gameState.currentPlayer === PLAYERS.YELLOW && !gameState.gameOver) {
                 disablePlayerInteraction();
-                undoButton.disabled = true; // Disable undo during AI thinking
+                undoButton.disabled = true;
                 if (aiMoveTimeoutId) clearTimeout(aiMoveTimeoutId);
-                // AI clock is already running, just wait for think time
-                aiMoveTimeoutId = setTimeout(triggerAIMove, 1500);
+                aiMoveTimeoutId = setTimeout(triggerAIMove, 500);
             } else if (!gameState.gameOver) {
-                enablePlayerInteraction(); // Ensure interaction is enabled for human turn
+                enablePlayerInteraction();
             } else {
-                 // Ensure clocks are stopped if game ended for any other reason here
                  pauseAllClocks();
             }
 
-        } // End performMove (Modified Task 17, 28, 33, 34-Fix)
+        } // End performMove
 
 
         /**
@@ -3990,25 +3935,40 @@
         // --- AI Logic (Minimax) ---
 
         /**
-         * Main AI decision function. Implements prioritized checks, dynamic depth, and falls back to Minimax.
-         * Uses static evaluation for choosing counter-moves.
+         * Main AI decision function. Implements prioritized checks, dynamic depth (more granular),
+         * and falls back to Minimax. Uses static evaluation for choosing counter-moves.
          */
-        function triggerAIMove() {
+        function triggerAIMove() { // Task 43, Task 50 Enhanced Dynamic Depth
             console.log("AI (Yellow) is thinking...");
             const player = PLAYERS.YELLOW;
             const aiStartTime = performance.now();
 
-            // --- Calculate Dynamic Depth ---
+            // --- Calculate Enhanced Dynamic Depth ---
             const totalPieces = Object.keys(gameState.board).length;
-            let currentDepth = MINIMAX_DEPTH;
-            if (totalPieces > 12) currentDepth = 2;
-            else if (totalPieces > 8) currentDepth = 3;
-            else currentDepth = Math.max(MINIMAX_DEPTH, 4);
-            console.log(`AI using search depth: ${currentDepth} (Total Pieces: ${totalPieces})`);
+            let calculatedDepth; // Determine depth based on piece count first
+
+            if (totalPieces > 12) {
+                calculatedDepth = 2; // Early game
+            } else if (totalPieces > 8) {
+                calculatedDepth = 3; // Mid game (9-12 pieces)
+            } else if (totalPieces > 6) {
+                calculatedDepth = 4; // Late Mid game (7-8 pieces)
+            } else if (totalPieces > 4) {
+                calculatedDepth = 5; // Late game (5-6 pieces)
+            } else {
+                calculatedDepth = 6; // Endgame (<= 4 pieces)
+            }
+
+            // Ensure the calculated depth does not exceed the global MINIMAX_DEPTH setting
+            const currentDepth = Math.min(calculatedDepth, MINIMAX_DEPTH);
+
+            console.log(`AI using search depth: ${currentDepth} (Pieces: ${totalPieces}, Calc: ${calculatedDepth}, Max Allowed: ${MINIMAX_DEPTH})`);
+            // --- End Enhanced Dynamic Depth Calculation ---
+
 
             // 1. Get all valid moves for AI
             let allMyMoves = [];
-            try { // Safety wrap
+            try {
                  allMyMoves = getAllValidMoves(gameState.board, player, false);
             } catch(e) {
                 console.error("triggerAIMove Error getting initial moves:", e);
@@ -4019,10 +3979,13 @@
                 console.log("AI has no valid moves! Checking game end conditions.");
                 if (!gameState.gameOver) {
                     if (checkForStalemate(player)) {
-                        gameState.winner = null; gameState.gameOver = true;
-                        updateStatus("Stalemate! AI (Yellow) has no valid moves.");
+                        // Stalemate: Assign win to the opponent
+                        gameState.winner = PLAYERS.ORANGE;
+                        gameState.gameOver = true;
+                        updateStatus("Stalemate! AI (Yellow) has no valid moves. Orange wins!");
                         pauseAllClocks();
                     } else {
+                        // Error state
                         gameState.winner = PLAYERS.ORANGE; gameState.gameOver = true;
                         updateStatus("AI Error or No Moves Found! Orange wins!");
                         pauseAllClocks();
@@ -4034,7 +3997,7 @@
 
             // --- Priority 1: Can AI win immediately? ---
             let winningMove = null;
-            try { // Safety wrap
+            try {
                  winningMove = findImmediateWinningMove(gameState.board, player, false);
              } catch(e) {
                   console.error("triggerAIMove Error checking for winning move:", e);
@@ -4049,7 +4012,7 @@
 
             // --- Priority 2: Can opponent win next turn? ---
             let opponentWinningMoves = [];
-            try { // Safety wrap
+            try {
                 opponentWinningMoves = getOpponentWinningMoves(gameState.board, player);
             } catch (e) {
                  console.error("triggerAIMove Error checking opponent winning moves:", e);
@@ -4058,7 +4021,7 @@
             if (opponentWinningMoves.length > 0) {
                 console.log(`AI Priority 2: Opponent has potential winning move(s):`, opponentWinningMoves);
                 let counterMoves = [];
-                 try { // Safety wrap
+                 try {
                      counterMoves = findCounterMoves(gameState, allMyMoves, opponentWinningMoves);
                  } catch(e) {
                       console.error("triggerAIMove Error finding counter moves:", e);
@@ -4071,16 +4034,16 @@
                     let bestCounterMove = null;
                     let bestCounterScore = -Infinity;
                     for (const counter of counterMoves) {
-                         // --- Safety Check ---
                          if (!counter || !counter.from || !counter.to) continue;
-                         try { // Wrap simulation and evaluation
+                         try {
                              const simResult = simulateMove(gameState, counter);
                              if (!simResult || !simResult.nextState || !simResult.nextState.board) {
                                 console.error(`[AI Priority 2 Error] Simulation failed for counter move ${counter.from}->${counter.to}`);
-                                continue; // Skip this counter move if simulation failed
+                                continue;
                              }
                              const { nextState: simulatedStateAfterCounter, moveInfo: counterMoveInfo } = simResult;
-                             const score = evaluateBoard(simulatedStateAfterCounter.board, player, counterMoveInfo); // <--- CORRECTED CALL
+                             // Evaluate from AI's perspective
+                             const score = evaluateBoard(simulatedStateAfterCounter.board, player, counterMoveInfo);
                              if (score > bestCounterScore) {
                                  bestCounterScore = score;
                                  bestCounterMove = counter;
@@ -4088,34 +4051,33 @@
                          } catch (e) {
                               console.error(`[AI Priority 2 Error] Evaluating counter ${counter.from}->${counter.to}:`, e);
                          }
-                    } // End counter move loop
-
-                    // --- Safety check if no best counter move could be evaluated ---
-                    if (!bestCounterMove && counterMoves.length > 0) { // If evaluation failed for all, pick first valid counter
-                         console.warn("AI Priority 2: Failed to evaluate any counter moves successfully. Picking first valid counter.");
-                         bestCounterMove = counterMoves.find(m => m); // Find first valid move object
-                         bestCounterScore = -Infinity; // Indicate it wasn't properly scored
                     }
 
-                    if (bestCounterMove) { // Check if we have a move to make
+                    if (!bestCounterMove && counterMoves.length > 0) {
+                         console.warn("AI Priority 2: Failed to evaluate any counter moves successfully. Picking first valid counter.");
+                         bestCounterMove = counterMoves.find(m => m);
+                         bestCounterScore = -Infinity;
+                    }
+
+                    if (bestCounterMove) {
                         const aiEndTime = performance.now();
                         console.log(`AI Priority 2: Choosing best counter ${bestCounterMove.from} -> ${bestCounterMove.to} (Static Eval Score: ${bestCounterScore.toFixed(2)}). Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
                         performMove(bestCounterMove.from, bestCounterMove.to);
-                        return; // Counter move made, exit AI turn
+                        return;
                     } else {
                          console.warn("AI Priority 2: No valid counter move selected despite finding possibilities. Falling back to Minimax.");
                     }
 
                 } else {
                     console.log(`AI Priority 2: Cannot stop all opponent winning moves! Making default best move.`);
-                    // Fall through to Minimax
                 }
-            } // End of Priority 2 Check
+            }
 
-            // --- Fallback: Use Minimax with dynamic depth ---
+            // --- Fallback: Use Minimax with the determined (and capped) depth ---
             console.log(`AI Fallback: Running Minimax (Depth: ${currentDepth})...`);
             let bestMoveResult = null;
-            try { // Safety wrap minimax call
+            try {
+                // Pass the AI player (player) and the final calculated depth
                 bestMoveResult = findBestMoveMinimax(currentDepth, gameState, player);
             } catch (e) {
                  console.error("triggerAIMove Error during Minimax call:", e);
@@ -4127,16 +4089,21 @@
                 console.log(`AI Fallback: Chose move ${bestMoveResult.move.from} -> ${bestMoveResult.move.to} (Score: ${bestMoveResult.score.toFixed(2)} @Depth ${currentDepth}). Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
                 performMove(bestMoveResult.move.from, bestMoveResult.move.to);
             } else {
-                 // Fallback if minimax itself fails or returns nothing
                  const aiEndTime = performance.now();
                  console.error(`AI ERROR: Minimax failed to return a valid move. Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s. Choosing random.`);
-                 const fallbackSet = allMyMoves.filter(m=>m); // Ensure only valid moves
+                 const fallbackSet = allMyMoves.filter(m=>m);
                  if (fallbackSet.length > 0) {
                      const randomMove = fallbackSet[Math.floor(Math.random() * fallbackSet.length)];
                      performMove(randomMove.from, randomMove.to);
                  } else {
                       console.error("AI CRITICAL ERROR: No moves available even for random fallback!");
-                      // Handle complete inability to move - perhaps end game?
+                       if (!gameState.gameOver) {
+                           gameState.winner = PLAYERS.ORANGE;
+                           gameState.gameOver = true;
+                           updateStatus("AI CRITICAL ERROR - No Moves! Orange Wins!");
+                           pauseAllClocks();
+                           disablePlayerInteraction(); updateUI(); updateUndoButtonState();
+                       }
                  }
             }
         } // End triggerAIMove
@@ -4621,17 +4588,18 @@
          * penalizing Wolf/Cat advancement, and penalizing states where hunger forces
          * a capture onto a guarded trap. Correctly handles directional logic for Yellow/Orange.
          * Includes safety checks and STRONGLY penalizes landing on guarded traps.
-         * Uses tunable constants for easier balancing. Adds defensive checks for robustness. // <-- Updated comment
+         * Uses tunable constants for easier balancing. Adds defensive checks for robustness.
+         * Includes more granular error handling. // <-- Updated comment
          * @param {object} boardState - The board state to evaluate.
          * @param {string} playerForMax - The player considered "maximizing" (AI, usually Yellow).
          * @param {object|null} [originalPieceIfMove=null] - If evaluating *after* a move (Can be removed if not needed).
          * @returns {number} A numerical score representing the board state's favorability for playerForMax.
          */
-        function evaluateBoard(boardState, playerForMax, originalPieceIfMove = null) { // Task 42, Task 43, Task 44 Direction Fix, Task 45 Robustness Fix
+        function evaluateBoard(boardState, playerForMax, originalPieceIfMove = null) { // Task 42, Task 43, Task 44 Direction Fix, Task 45/46 Robustness Fix
             let score = 0;
             // --- Safety Check: Ensure boardState is valid ---
             if (!boardState || typeof boardState !== 'object') {
-                console.error("[Eval Error] Invalid boardState provided:", boardState);
+                console.error("[Eval Error - Initial] Invalid boardState provided:", boardState);
                 return playerForMax === PLAYERS.YELLOW ? AI_LOSE_SCORE : AI_WIN_SCORE;
             }
 
@@ -4642,10 +4610,10 @@
 
             // Use constants
             const pieceValues = AI_PIECE_VALUES;
-            const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow; // AI's own den
-            const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange; // Opponent's den
-            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange; // Traps near AI's den
-            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow; // Traps near Opponent's den
+            const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow;
+            const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange;
+            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow;
 
             const adjacentToMaxDen = getAdjacentCoords(maxDen);
             const adjacentToMinDen = getAdjacentCoords(minDen);
@@ -4661,60 +4629,40 @@
             const adjacentToMinTraps = getAdjacentCoordsSet(minTraps);
 
             // --- Define Row Indices ---
-            const riverRowStart = 3; // Index for board row 6
-            const riverRowEnd = 5;   // Index for board row 4
-            const forwardMidlineRow = 4; // Index for board row 5 (center)
-            const yellowDefensiveThresholdIndex = 2; // Indices 0, 1, 2 (Rows 9, 8, 7)
-            const orangeDefensiveThresholdIndex = 6; // Indices 6, 7, 8 (Rows 3, 2, 1)
-            const yellowNearOppDenThreshold = 6; // Indices 6, 7, 8 (Rows 3, 2, 1 - near Orange Den)
-            const orangeNearOppDenThreshold = 2; // Indices 0, 1, 2 (Rows 9, 8, 7 - near Yellow Den)
+            const riverRowStart = 3; const riverRowEnd = 5; const forwardMidlineRow = 4;
+            const yellowDefensiveThresholdIndex = 2; const orangeDefensiveThresholdIndex = 6;
+            const yellowNearOppDenThreshold = 6; const orangeNearOppDenThreshold = 2;
 
-            const centerCols = [2, 3, 4]; // c, d, e columns
-            const jumpLandingCols = [1, 2, 4, 5]; // b, c, e, f columns (potential blocking cols)
+            const centerCols = [2, 3, 4]; const jumpLandingCols = [1, 2, 4, 5];
 
-            let maxPieceCount = 0;
-            let minPieceCount = 0;
-            let maxPiecesNearOppDen = 0;
+            let maxPieceCount = 0; let minPieceCount = 0; let maxPiecesNearOppDen = 0;
 
             // --- Pre-checks ---
             if (boardState[maxDen]?.player === opponent) return AI_LOSE_SCORE;
             if (boardState[minDen]?.player === playerForMax) return AI_WIN_SCORE;
 
             // --- Pre-calculate Threats, Mobility & Back Row Jumpers ---
-            const threatsTo = {}; // AI pieces threatened by opponent
-            const threatenedBy = {}; // Opponent pieces threatened by AI
-            let allOpponentMoves = [];
-            let allMyMoves = [];
-            let backRowJumpersExist = false;
-            let opponentTotalValidMoves = 0;
-            let myOffensiveMovesCount = 0;
+            const threatsTo = {}; const threatenedBy = {};
+            let allOpponentMoves = []; let allMyMoves = [];
+            let backRowJumpersExist = false; let opponentTotalValidMoves = 0; let myOffensiveMovesCount = 0;
 
             try {
                  allOpponentMoves = getAllValidMoves(boardState, opponent, true);
                  allMyMoves = getAllValidMoves(boardState, playerForMax, true);
                  opponentTotalValidMoves = allOpponentMoves.length;
 
-                 // Identify threatened pieces
-                 for (const move of allOpponentMoves) {
-                     if (move?.to && boardState[move.to]?.player === playerForMax) threatsTo[move.to] = true; // Added ?. checks
-                 }
+                 for (const move of allOpponentMoves) { if (move?.to && boardState[move.to]?.player === playerForMax) threatsTo[move.to] = true; }
                  for (const move of allMyMoves) {
-                    if (move?.to && boardState[move.to]?.player === opponent) threatenedBy[move.to] = true; // Added ?. checks
-
-                    // Track offensive moves (forward OR attack)
-                    if (move?.from && move?.to) { // Check move validity
-                        const rcFrom = getRowCol(move.from);
-                        const rcTo = getRowCol(move.to);
+                    if (move?.to && boardState[move.to]?.player === opponent) threatenedBy[move.to] = true;
+                    if (move?.from && move?.to) {
+                        const rcFrom = getRowCol(move.from); const rcTo = getRowCol(move.to);
                         if (rcFrom && rcTo) {
                             const isForward = (playerForMax === PLAYERS.YELLOW && rcTo.row > rcFrom.row) || (playerForMax === PLAYERS.ORANGE && rcTo.row < rcFrom.row);
-                            const isAttack = !!boardState[move.to] && boardState[move.to]?.player === opponent; // Added ?. check
-                            if (isForward || isAttack) {
-                                myOffensiveMovesCount++;
-                            }
+                            const isAttack = !!boardState[move.to] && boardState[move.to]?.player === opponent;
+                            if (isForward || isAttack) { myOffensiveMovesCount++; }
                         }
                     }
                  }
-                 // Check if AI has jumpers near its *own* back row
                  for (const coords in boardState) {
                      const piece = boardState[coords];
                      if (piece?.player === playerForMax && (piece.rank === 7 || piece.rank === 6)) {
@@ -4724,22 +4672,20 @@
                          }
                      }
                  }
-            } catch(e) { console.error("[Eval Error] Error during pre-calculation:", e, "Board:", boardState); return 0; }
+            } catch(e) { console.error("[Eval Error - PreCalc] Error during pre-calculation:", e?.message || e, "Board:", JSON.stringify(boardState)); return 0; } // Added ?.message
 
-            // --- Apply Opponent Mobility Penalty & AI Offensive Mobility Bonus ---
+            // --- Apply Mobility Scores ---
             score += opponentTotalValidMoves * AI_OPPONENT_MOBILITY_PENALTY_MULT;
             score += myOffensiveMovesCount * AI_OFFENSIVE_MOBILITY_BONUS_MULT;
 
             // --- Iterate through pieces ---
             for (const coords in boardState) {
-                try { // Wrap processing for each piece
+                // ----- START: Outer Try-Catch for this specific piece -----
+                try {
                     const piece = boardState[coords];
-                    if (!piece) continue; // Skip if piece is null/undefined
+                    if (!piece) continue;
                     const rc = getRowCol(coords);
-                    if (!rc) {
-                        console.warn(`[Eval Warn] Skipping piece at invalid coords: ${coords}`);
-                        continue; // Skip if coordinates are invalid
-                    }
+                    if (!rc) { console.warn(`[Eval Warn] Skipping piece at invalid coords: ${coords}`); continue; }
 
                     let pieceScore = pieceValues[piece.rank] || 0;
                     const pieceAbilities = SPECIAL_ABILITIES[piece.rank] || {};
@@ -4750,143 +4696,131 @@
                         maxPieceCount++;
                         score += pieceScore;
 
-                        // Calculate potential capture bonus
+                        // Capture Bonus Potential
                         let captureBonusFromThisPiece = 0;
-                        const pieceMoves = allMyMoves.filter(m => m?.from === coords); // Added ?. check
+                        const pieceMoves = allMyMoves.filter(m => m?.from === coords);
                         for (const move of pieceMoves) {
-                             if (!move?.to) continue; // Added ?. check
+                             if (!move?.to) continue;
                              const targetPiece = boardState[move.to];
-                             if (targetPiece?.player === opponent) { // Added ?. check
+                             if (targetPiece?.player === opponent) {
                                  let capturedValue = pieceValues[targetPiece.rank] || 10;
                                  captureBonusFromThisPiece += capturedValue * AI_CAPTURE_BONUS_MULT;
                              }
                         }
                         score += captureBonusFromThisPiece;
 
-                        // A) Den Proximity Bonus (Near Opponent's Den)
+                        // A) Den Proximity
                         if (adjacentToMinDen.includes(coords)) {
                             score += AI_DEN_PROXIMITY_BONUS_SQ;
-                            if (!piece.isHungry && isValidMove(coords, minDen, piece, boardState, true).valid) { // Check piece exists before isHungry
-                                score += AI_WIN_SCORE * AI_WIN_ADJACENT_BONUS_FACTOR;
-                            }
-                        } else if (twoSquaresFromMinDen.has(coords)) {
-                            score += AI_DEN_PROXIMITY_BONUS_2SQ;
-                        }
+                            if (!piece.isHungry && isValidMove(coords, minDen, piece, boardState, true).valid) { score += AI_WIN_SCORE * AI_WIN_ADJACENT_BONUS_FACTOR; }
+                        } else if (twoSquaresFromMinDen.has(coords)) { score += AI_DEN_PROXIMITY_BONUS_2SQ; }
 
-                        // B) Advancement & Positional Bonuses/Penalties
+                        // B) Advancement & Positional
                         const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? rc.row : (ROWS - 1 - rc.row);
                         const isForwardPosition = (playerForMax === PLAYERS.YELLOW && rc.row > forwardMidlineRow) || (playerForMax === PLAYERS.ORANGE && rc.row < forwardMidlineRow);
                         const isInDefensiveZone = (playerForMax === PLAYERS.YELLOW && rc.row <= yellowDefensiveThresholdIndex) || (playerForMax === PLAYERS.ORANGE && rc.row >= orangeDefensiveThresholdIndex);
-
                         if (isWolfOrCat) {
                             score += rowsAdvanced * AI_WOLF_CAT_ADVANCE_PENALTY_MULT;
-                            if ((isEarlyGame || isMidGame) && isInDefensiveZone) {
-                                score += AI_WOLF_CAT_DEFENSE_BONUS;
-                            }
+                            if ((isEarlyGame || isMidGame) && isInDefensiveZone) { score += AI_WOLF_CAT_DEFENSE_BONUS; }
                             const isOnJumpStartRow = (playerForMax === PLAYERS.YELLOW && rc.row === riverRowStart) || (playerForMax === PLAYERS.ORANGE && rc.row === riverRowEnd);
                             const isBlockingCol = jumpLandingCols.includes(rc.col);
-                            if (backRowJumpersExist && isOnJumpStartRow && isBlockingCol) {
-                                score += AI_BLOCKING_JUMPER_PENALTY;
-                            }
+                            if (backRowJumpersExist && isOnJumpStartRow && isBlockingCol) { score += AI_BLOCKING_JUMPER_PENALTY; }
                         } else {
                             score += rowsAdvanced * AI_ADVANCE_BONUS_MULT;
                             if (piece.rank === 7 || piece.rank === 6) score += rowsAdvanced * AI_JUMPER_OFFENSE_BONUS;
                             if (piece.rank === 5) score += rowsAdvanced * AI_LEOPARD_OFFENSE_BONUS;
                             if (piece.rank === 3) score += rowsAdvanced * AI_DOG_OFFENSE_BONUS;
                             if (piece.rank === 1) score += rowsAdvanced * AI_RAT_OFFENSE_BONUS;
-                            if(isForwardPosition) {
-                                score += AI_FORWARD_POSITION_BONUS;
-                            }
-                            if (isEarlyGame && piece.rank !== 8 && isInDefensiveZone) {
-                                score += AI_PIECE_TOO_DEFENSIVE_PENALTY;
-                            }
+                            if(isForwardPosition) { score += AI_FORWARD_POSITION_BONUS; }
+                            if (isEarlyGame && piece.rank !== 8 && isInDefensiveZone) { score += AI_PIECE_TOO_DEFENSIVE_PENALTY; }
                         }
 
-                        // C) Past River & Center Control Bonus
+                        // C) Past River & Center Control
                         const isPastRiver = (playerForMax === PLAYERS.YELLOW && rc.row > riverRowEnd) || (playerForMax === PLAYERS.ORANGE && rc.row < riverRowStart);
-                        if (isPastRiver) {
-                            score += AI_PAST_RIVER_BONUS;
-                            if (centerCols.includes(rc.col)) score += AI_CENTER_CONTROL_BONUS;
-                        }
+                        if (isPastRiver) { score += AI_PAST_RIVER_BONUS; if (centerCols.includes(rc.col)) score += AI_CENTER_CONTROL_BONUS; }
 
-                        // D) Water Control Bonus
+                        // D) Water Control
                         if ((piece.rank === 1 || piece.rank === 3) && WATER_SQUARES.has(coords)) { score += AI_WATER_CONTROL_BONUS; }
 
-                        // E) Near Opponent Den General Bonus
+                        // E) Near Opponent Den General
                         const isNearOppDen = (playerForMax === PLAYERS.YELLOW && rc.row >= yellowNearOppDenThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= orangeNearOppDenThreshold);
-                        if (isNearOppDen) {
-                             maxPiecesNearOppDen++; score += AI_NEAR_OPP_DEN_BONUS;
-                        }
+                        if (isNearOppDen) { maxPiecesNearOppDen++; score += AI_NEAR_OPP_DEN_BONUS; }
 
-                        // F) Trap Safety/Danger
-                        if (isOnTrapSquare(coords)) {
-                             const adjacent = getAdjacentCoords(coords);
-                             let isTrapGuarded = false;
-                             for(const adjCoord of adjacent) {
-                                const adjPiece = boardState[adjCoord];
-                                if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) { // Added ?. check
-                                    isTrapGuarded = true; break;
-                                }
-                             }
-                             if (isTrapGuarded) {
-                                 score -= (pieceValues[piece.rank] || 20) * 1.8;
-                                 score += AI_TRAP_DANGER_PENALTY;
-                             } else {
-                                score += AI_TRAP_DANGER_PENALTY / 3;
-                             }
-                        } else { // Vulnerability TO trap attack
-                             const adjacent = getAdjacentCoords(coords);
-                             for(const adjCoord of adjacent) {
-                                const adjPiece = boardState[adjCoord];
-                                if(adjPiece?.player === opponent) { // Added ?. check
-                                    const trapsNearOpponent = getAdjacentCoords(adjCoord).filter(c => isOnTrapSquare(c));
-                                    for (const trapCoord of trapsNearOpponent) {
-                                        // Ensure adjPiece exists before passing to isValidMove
-                                        if (adjPiece && trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
-                                            const isPieceAdjacentToThatTrap = getAdjacentCoords(coords).includes(trapCoord);
-                                            if (isPieceAdjacentToThatTrap) {
-                                                score += AI_TRAP_ATTACK_VULNERABILITY;
-                                                break;
+                        // ----- START: Granular Try-Catch for Trap Logic -----
+                        try {
+                            // F) Trap Safety/Danger
+                            if (isOnTrapSquare(coords)) {
+                                 const adjacent = getAdjacentCoords(coords);
+                                 let isTrapGuarded = false;
+                                 for(const adjCoord of adjacent) {
+                                    const adjPiece = boardState[adjCoord];
+                                    if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) { isTrapGuarded = true; break; }
+                                 }
+                                 if (isTrapGuarded) { score -= (pieceValues[piece.rank] || 20) * 1.8; score += AI_TRAP_DANGER_PENALTY; }
+                                 else { score += AI_TRAP_DANGER_PENALTY / 3; }
+                            } else { // Vulnerability TO trap attack
+                                 const adjacent = getAdjacentCoords(coords);
+                                 let vulnerabilityFound = false; // Flag to apply penalty only once per piece
+                                 for(const adjCoord of adjacent) {
+                                    if (vulnerabilityFound) break; // Stop checking if already penalized
+                                    const adjPiece = boardState[adjCoord];
+                                    if(adjPiece?.player === opponent) {
+                                        const trapsNearOpponent = getAdjacentCoords(adjCoord).filter(c => isOnTrapSquare(c));
+                                        for (const trapCoord of trapsNearOpponent) {
+                                            if (adjPiece && trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
+                                                const isPieceAdjacentToThatTrap = getAdjacentCoords(coords).includes(trapCoord);
+                                                if (isPieceAdjacentToThatTrap) {
+                                                    score += AI_TRAP_ATTACK_VULNERABILITY;
+                                                    vulnerabilityFound = true; // Set flag
+                                                    break; // Apply penalty once for this opponent piece
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                if (score <= (AI_LOSE_SCORE / 1.5)) break;
-                             }
+                                    if (score <= (AI_LOSE_SCORE / 1.5)) break; // Optimization
+                                 }
+                            }
+                        } catch (trapError) {
+                             console.error(`[Eval Error - Trap Logic @ ${coords}]`, trapError?.message || trapError, "Piece:", piece); // Log specific section error
+                             // Continue evaluating other aspects of the piece
                         }
+                        // ----- END: Granular Try-Catch for Trap Logic -----
 
                         // G) Bonus near opponent's traps
                         if (adjacentToMinTraps.has(coords)) score += AI_NEAR_OPP_TRAP_BONUS;
 
-                        // H) Bonus/Penalty based on Threats
+                        // H) Threat Bonus/Penalty
                         let isThreateningOpponent = false;
-                        // Reuse pieceMoves from earlier
-                        for(const move of pieceMoves){ if(move?.to && boardState[move.to]?.player === opponent) { isThreateningOpponent = true; break; } } // Added ?. checks
+                        for(const move of pieceMoves){ if(move?.to && boardState[move.to]?.player === opponent) { isThreateningOpponent = true; break; } }
                         if(isThreateningOpponent) score += AI_THREATENS_OPPONENT_BONUS;
                         if (threatsTo[coords]) score += AI_IS_THREATENED_PENALTY;
 
-                         // I) Penalize "Forced Suicide" onto guarded trap
-                         if (piece.isHungry) { // Check piece exists before isHungry
-                             const attacks = pieceMoves.filter(m => m?.to && boardState[m.to]?.player === opponent); // Added ?. checks
-                             if (attacks.length === 1) {
-                                 const forcedAttack = attacks[0];
-                                 const targetSquare = forcedAttack.to; // Already checked move.to exists
-                                 if (isOnTrapSquare(targetSquare)) {
-                                     const targetAdjacent = getAdjacentCoords(targetSquare);
-                                     let isTargetTrapGuardedByOpponent = false;
-                                     for (const adjToTarget of targetAdjacent) {
-                                         const guardPiece = boardState[adjToTarget];
-                                         // Ensure guardPiece exists before passing to isValidMove
-                                         if (guardPiece?.player === opponent && isValidMove(adjToTarget, targetSquare, guardPiece, boardState, true).valid) { // Added ?. check
-                                             isTargetTrapGuardedByOpponent = true; break;
+                        // ----- START: Granular Try-Catch for Forced Suicide Logic -----
+                         try {
+                             // I) Penalize "Forced Suicide" onto guarded trap
+                             if (piece.isHungry) {
+                                 const attacks = pieceMoves.filter(m => m?.to && boardState[m.to]?.player === opponent);
+                                 if (attacks.length === 1) {
+                                     const forcedAttack = attacks[0];
+                                     const targetSquare = forcedAttack.to;
+                                     if (isOnTrapSquare(targetSquare)) {
+                                         const targetAdjacent = getAdjacentCoords(targetSquare);
+                                         let isTargetTrapGuardedByOpponent = false;
+                                         for (const adjToTarget of targetAdjacent) {
+                                             const guardPiece = boardState[adjToTarget];
+                                             if (guardPiece?.player === opponent && isValidMove(adjToTarget, targetSquare, guardPiece, boardState, true).valid) {
+                                                 isTargetTrapGuardedByOpponent = true; break;
+                                             }
                                          }
-                                     }
-                                     if (isTargetTrapGuardedByOpponent) {
-                                         score += AI_HUNGER_FORCES_TRAP_DEATH_PENALTY;
+                                         if (isTargetTrapGuardedByOpponent) { score += AI_HUNGER_FORCES_TRAP_DEATH_PENALTY; }
                                      }
                                  }
                              }
+                         } catch (suicideCheckError) {
+                             console.error(`[Eval Error - Forced Suicide Check @ ${coords}]`, suicideCheckError?.message || suicideCheckError, "Piece:", piece); // Log specific section error
+                             // Continue evaluating other aspects
                          }
+                         // ----- END: Granular Try-Catch for Forced Suicide Logic -----
                     }
                     // --- Evaluate OPPONENT PIECES ---
                     else { // piece.player === opponent
@@ -4895,36 +4829,29 @@
 
                         // Penalize AI if opponent threatens AI pieces
                         let opponentIsThreatening = false;
-                        const oppPieceMoves = allOpponentMoves.filter(m => m?.from === coords); // Added ?. check
-                        for(const oppMove of oppPieceMoves){ if(oppMove?.to && boardState[oppMove.to]?.player === playerForMax){ opponentIsThreatening = true; break; } } // Added ?. checks
+                        const oppPieceMoves = allOpponentMoves.filter(m => m?.from === coords);
+                        for(const oppMove of oppPieceMoves){ if(oppMove?.to && boardState[oppMove.to]?.player === playerForMax){ opponentIsThreatening = true; break; } }
                         if(opponentIsThreatening) score -= AI_THREATENS_OPPONENT_BONUS;
 
                         // Penalize AI if opponent piece is near AI den or can win
                         const isOnMaxTrap = maxTraps.has(coords);
                         const isAdjacentToMaxDen = adjacentToMaxDen.includes(coords);
                         const isNearOwnDen = (playerForMax === PLAYERS.YELLOW && rc.row <= orangeNearOppDenThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= yellowNearOppDenThreshold);
-
                         if (isAdjacentToMaxDen || isOnMaxTrap || isNearOwnDen) {
                             score += AI_NEAR_OWN_DEN_PENALTY;
-                            // Ensure piece exists before checking isHungry or calling isValidMove
-                            if (piece && !piece.isHungry && isValidMove(coords, maxDen, piece, boardState, true).valid) {
-                                 score += AI_IMMEDIATE_WIN_THREAT_PENALTY;
-                             }
+                            if (piece && !piece.isHungry && isValidMove(coords, maxDen, piece, boardState, true).valid) { score += AI_IMMEDIATE_WIN_THREAT_PENALTY; }
                         }
                         // Reward AI if opponent piece IS threatened by AI
-                        if (threatenedBy[coords]) {
-                            score -= AI_IS_THREATENED_PENALTY; // Subtract negative = Add positive score
-                        }
+                        if (threatenedBy[coords]) { score -= AI_IS_THREATENED_PENALTY; }
                     }
-                } catch (e) { // Catch errors during individual piece processing
-                     console.error(`[Eval Error] Error processing piece at ${coords}:`, e);
-                     if (e instanceof Error && e.stack) { // Log stack if available
-                         console.error("Eval Error Stack:", e.stack);
-                     }
-                     console.error("Eval Error Context - Piece:", boardState[coords], "Board:", JSON.stringify(boardState)); // Log context
-                     // Continue to the next piece instead of returning 0 immediately
+                } catch (e) { // Catch errors during outer processing of a piece
+                     console.error(`[Eval Error - Outer Loop @ ${coords}]`, e?.message || e); // Added ?.message
+                     if (e instanceof Error && e.stack) { console.error("Eval Error Stack:", e.stack); }
+                     console.error("Eval Error Context - Coords:", coords, "Piece:", boardState[coords], "Board:", JSON.stringify(boardState));
+                     // Continue to the next piece to avoid halting evaluation
                      continue;
                 }
+                // ----- END: Outer Try-Catch for this specific piece -----
             } // End piece loop
 
             // --- Post-Iteration Checks & Final Score Adjustments ---
