@@ -1564,35 +1564,38 @@
         };
         const MINIMAX_DEPTH = 3; // Depth for AI search (higher = stronger but slower)
 
-        // --- AI Evaluation Constants (Tunable - Aggressive + Strategic Positioning) ---
+        // --- AI Evaluation Constants (Tunable - Aggressive + Strategic + Wolf/Cat Retreat) ---
         const AI_WIN_SCORE = 10000;
         const AI_LOSE_SCORE = -10000;
         // --- Offensive Bonuses ---
-        const AI_ADVANCE_BONUS_MULT = 3.0;   // Bonus per row advanced (Reduced universal bonus)
-        const AI_PAST_RIVER_BONUS = 15;      // Bonus for any piece being past the river center (NEW)
-        const AI_NEAR_OPP_DEN_BONUS = 75;    // Bonus for AI near opponent's den
+        const AI_ADVANCE_BONUS_MULT = 1.5;   // Base bonus per row advanced (Reduced further)
+        const AI_PAST_RIVER_BONUS = 20;      // Bonus for any piece being past the river center (Increased)
+        const AI_NEAR_OPP_DEN_BONUS = 80;    // Bonus for AI near opponent's den
         const AI_DEN_PROXIMITY_BONUS_SQ = 600; // HUGE Bonus for being 1 square away
         const AI_DEN_PROXIMITY_BONUS_2SQ = 200; // Large Bonus for being 2 squares away
-        const AI_MULTI_ATTACKER_BONUS = 50;  // Bonus for multiple pieces near opponent den
+        const AI_MULTI_ATTACKER_BONUS = 55;  // Bonus for multiple pieces near opponent den
         const AI_NEAR_OPP_TRAP_BONUS = 20;   // Bonus for AI near opponent's traps (offense)
-        const AI_OFFENSIVE_MOBILITY_BONUS_MULT = 0.7; // Bonus per FORWARD/ATTACK move (Keep moderate)
-        const AI_CENTER_CONTROL_BONUS = 10;  // Bonus for controlling c,d,e columns past river
-        const AI_JUMPER_OFFENSE_BONUS = 50;  // Extra bonus for Lion/Tiger advancing (Increased MORE)
-        const AI_RAT_OFFENSE_BONUS = 30;     // Extra bonus for Rat advancing (Increased MORE)
-        const AI_THREATENS_OPPONENT_BONUS = 90; // Bonus for threatening a capture next turn (High)
-        const AI_CAPTURE_BONUS_MULT = 1.4;   // Multiplier for captured piece value (High)
-        const AI_WATER_CONTROL_BONUS = 25;   // Bonus for Rat/Dog on water (NEW)
-        // --- Defensive/Strategic Penalties ---
+        const AI_OFFENSIVE_MOBILITY_BONUS_MULT = 0.5; // Bonus per FORWARD/ATTACK move (Kept Low)
+        const AI_CENTER_CONTROL_BONUS = 15;  // Bonus for controlling c,d,e columns past river (Increased)
+        const AI_JUMPER_OFFENSE_BONUS = 65;  // Extra bonus for Lion/Tiger advancing (VERY HIGH)
+        const AI_LEOPARD_OFFENSE_BONUS = 40; // Extra bonus for Leopard advancing (NEW)
+        const AI_DOG_OFFENSE_BONUS = 35;     // Extra bonus for Dog advancing (NEW)
+        const AI_RAT_OFFENSE_BONUS = 35;     // Extra bonus for Rat advancing (High)
+        const AI_THREATENS_OPPONENT_BONUS = 95; // Bonus for threatening a capture next turn (Very High)
+        const AI_CAPTURE_BONUS_MULT = 1.5;   // Multiplier for captured piece value (Very High)
+        const AI_WATER_CONTROL_BONUS = 40;   // Bonus for Rat/Dog on water (Increased)
+        // --- Defensive/Strategic Penalties & Wolf/Cat Specific ---
         const AI_IMMEDIATE_WIN_THREAT_PENALTY = -3000; // Opponent can win next turn
         const AI_NEAR_OWN_DEN_PENALTY = -5;          // Opponent piece near AI den
-        const AI_PIECE_TOO_DEFENSIVE_PENALTY = -5;   // General penalty for pieces sitting too far back (Reduced)
-        const AI_WOLF_CAT_DEFENSE_BONUS = 5;         // Slight BONUS for Wolf/Cat being defensive early (NEW)
-        const AI_BLOCKING_JUMPER_PENALTY = -150;     // Penalty for Wolf/Cat blocking jump squares (Increased DRASTICALLY)
-        const AI_TRAP_DANGER_PENALTY = -150;         // AI piece vulnerable ON a trap
-        const AI_TRAP_ATTACK_VULNERABILITY = -100;   // AI piece vulnerable TO a trap attack
-        const AI_IS_THREATENED_PENALTY = -20;        // Penalty if AI piece can be captured next turn
+        const AI_PIECE_TOO_DEFENSIVE_PENALTY = -3;   // General penalty for pieces sitting too far back (Very Low)
+        const AI_WOLF_CAT_DEFENSE_BONUS = 15;        // BONUS for Wolf/Cat being defensive early (Increased)
+        const AI_WOLF_CAT_ADVANCE_PENALTY_MULT = -3.0;// PENALTY per row Wolf/Cat advance (NEW - Negative Value!)
+        const AI_BLOCKING_JUMPER_PENALTY = -175;     // Penalty for Wolf/Cat blocking jump squares (Increased More)
+        const AI_TRAP_DANGER_PENALTY = 0;         // AI piece vulnerable ON a trap
+        const AI_TRAP_ATTACK_VULNERABILITY = 0;   // AI piece vulnerable TO a trap attack
+        const AI_IS_THREATENED_PENALTY = -15;        // Penalty if AI piece can be captured next turn (Low)
         // --- Piece Values ---
-        const AI_PIECE_VALUES = { 1: 45, 2: 10, 3: 50, 4: 25, 5: 45, 6: 70, 7: 80, 8: 70 }; // Wolf/Cat slightly lower
+        const AI_PIECE_VALUES = { 1: 45, 2: 5, 3: 50, 4: 20, 5: 45, 6: 70, 7: 80, 8: 70 }; // Wolf/Cat lower value
 
         // --- Game State Variables ---
         let gameState = {}; // Holds current board, player, turn, etc.
@@ -4314,18 +4317,19 @@
 
         /**
          * Evaluates the static board state from the perspective of the AI player (playerForMax).
-         * Incorporates heuristics favoring offense, den proximity, water control,
-         * jumper lane clearing, and strategic piece positioning.
+         * Incorporates heuristics favoring specific piece roles (Jumpers, Dog, Leopard, Rat advance),
+         * penalizing Wolf/Cat advancement, and prioritizing aggression/den threats.
          * Uses tunable constants for easier balancing.
          * @param {object} boardState - The board state to evaluate.
          * @param {string} playerForMax - The player considered "maximizing" (AI, usually Yellow).
          * @returns {number} A numerical score representing the board state's favorability for playerForMax.
          */
-        function evaluateBoard(boardState, playerForMax) { // Task 37 Strategic Positioning Tuning
+        function evaluateBoard(boardState, playerForMax) { // Task 38 Wolf/Cat Retreat Logic
             let score = 0;
             const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
             const totalPieces = Object.keys(boardState).length;
-            const isEarlyMidGame = totalPieces > 10; // Keep threshold relatively high
+            const isEarlyGame = totalPieces > 12; // Stricter early game check
+            const isMidGame = totalPieces > 8 && totalPieces <= 12;
 
             // Use constants
             const pieceValues = AI_PIECE_VALUES;
@@ -4355,7 +4359,7 @@
             let minPieceCount = 0;
             let maxPiecesNearOppDen = 0; // In last 3 rows
 
-            // --- Pre-checks for immediate win/loss ---
+            // --- Pre-checks ---
             if (boardState[maxDen]?.player === opponent) return AI_LOSE_SCORE;
             if (boardState[minDen]?.player === playerForMax) return AI_WIN_SCORE;
 
@@ -4366,25 +4370,14 @@
             const allMyMoves = getAllValidMoves(boardState, playerForMax, true);
             let backRowJumpersExist = false;
 
-            for (const move of allOpponentMoves) {
-                if (boardState[move.to]?.player === playerForMax) {
-                    threatsTo[move.to] = true;
-                }
-            }
-             for (const move of allMyMoves) {
-                if (boardState[move.to]?.player === opponent) {
-                    threatenedBy[move.to] = true;
-                }
-            }
-            // Check for back row jumpers *once*
+            for (const move of allOpponentMoves) { if (boardState[move.to]?.player === playerForMax) threatsTo[move.to] = true; }
+            for (const move of allMyMoves) { if (boardState[move.to]?.player === opponent) threatenedBy[move.to] = true; }
             for (const coords in boardState) {
                  const piece = boardState[coords];
                  if (piece?.player === playerForMax && (piece.rank === 7 || piece.rank === 6)) {
                      const rc = getRowCol(coords);
-                     // More precise check: starting rows for jumps
-                     if (rc && ((playerForMax === PLAYERS.YELLOW && rc.row >= 6) || (playerForMax === PLAYERS.ORANGE && rc.row <= 2))) { // Rows 7,8,9 (Y) or 1,2,3 (O)
-                         backRowJumpersExist = true;
-                         break;
+                     if (rc && ((playerForMax === PLAYERS.YELLOW && rc.row >= 6) || (playerForMax === PLAYERS.ORANGE && rc.row <= 2))) {
+                         backRowJumpersExist = true; break;
                      }
                  }
             }
@@ -4393,127 +4386,110 @@
             for (const coords in boardState) {
                 const piece = boardState[coords];
                 if (!piece) continue;
-
                 const rc = getRowCol(coords);
                 if (!rc) continue;
 
                 let pieceScore = pieceValues[piece.rank] || 0;
                 const pieceAbilities = SPECIAL_ABILITIES[piece.rank] || {};
+                const isWolfOrCat = piece.rank === 4 || piece.rank === 2;
 
-                // Calculate OFFENSIVE mobility bonus & Capture Bonus
+                // --- Calculate Mobility & Capture Potential ---
                 let offensiveMovesCount = 0;
                 let captureBonusFromThisPiece = 0;
                 const pieceMoves = allMyMoves.filter(m => m.from === coords);
-
                 for (const move of pieceMoves) {
                     const targetRC = getRowCol(move.to);
                     const targetPiece = boardState[move.to];
                     let isForward = false;
-                    if (targetRC) {
-                       isForward = (playerForMax === PLAYERS.YELLOW && targetRC.row < rc.row) || (playerForMax === PLAYERS.ORANGE && targetRC.row > rc.row);
-                    }
+                    if (targetRC) isForward = (playerForMax === PLAYERS.YELLOW && targetRC.row < rc.row) || (playerForMax === PLAYERS.ORANGE && targetRC.row > rc.row);
                     const isAttack = !!targetPiece && targetPiece.player === opponent;
-
                     if (isAttack) {
                         offensiveMovesCount++;
                         let targetRank = targetPiece.rank;
                         if (isOnTrapSquare(move.to)) targetRank = 0;
                         const currentRank = piece.rank;
                         const isRatVsElephant = currentRank === 1 && targetPiece.rank === 8;
-                        // Favorable trades/captures get bonus
                         if (isRatVsElephant || currentRank >= targetRank) {
                              let capturedValue = pieceValues[targetPiece.rank] || 10;
                              captureBonusFromThisPiece += capturedValue * AI_CAPTURE_BONUS_MULT;
                         }
-                    } else if (isForward) {
-                        offensiveMovesCount++;
-                    }
+                    } else if (isForward) { offensiveMovesCount++; }
                 }
                 const offensiveMobilityBonus = offensiveMovesCount * AI_OFFENSIVE_MOBILITY_BONUS_MULT;
 
-
-                if (piece.player === playerForMax) { // AI's piece (Maximizing)
+                // --- Evaluate AI PIECES ---
+                if (piece.player === playerForMax) {
                     maxPieceCount++;
                     score += pieceScore;
                     score += offensiveMobilityBonus;
                     score += captureBonusFromThisPiece;
 
-                    // --- HUGE Bonus for Den Proximity ---
+                    // A) Den Proximity Bonus (VERY HIGH)
                     if (adjacentToMinDen.includes(coords)) {
                         score += AI_DEN_PROXIMITY_BONUS_SQ;
-                        if (isValidMove(coords, minDen, piece, boardState, true).valid && !piece.isHungry) {
-                           score += AI_WIN_SCORE / 1.5;
-                        }
+                        if (isValidMove(coords, minDen, piece, boardState, true).valid && !piece.isHungry) score += AI_WIN_SCORE / 1.5;
                     } else if (twoSquaresFromMinDen.has(coords)) {
                          score += AI_DEN_PROXIMITY_BONUS_2SQ;
                     }
 
-                    // 1. Positional Bonus: Advancing
+                    // B) Advancement & Positional Bonuses (Piece Specific)
                     const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (rc.row) : (ROWS - 1 - rc.row);
-                    // Apply base advancement bonus, scaled down from before
-                    score += rowsAdvanced * AI_ADVANCE_BONUS_MULT; // Reduced universal bonus
-
-                    // 1a. Center Control & Past River Bonus
                     const isPastRiver = (playerForMax === PLAYERS.YELLOW && rc.row > riverRowEnd) || (playerForMax === PLAYERS.ORANGE && rc.row < riverRowStart);
-                    if (isPastRiver) {
-                        score += AI_PAST_RIVER_BONUS; // Bonus for crossing river
-                        if (centerCols.includes(rc.col)) {
-                            score += AI_CENTER_CONTROL_BONUS; // Extra for center past river
+                    const defensiveRowThreshold = playerForMax === PLAYERS.YELLOW ? 6 : 2; // Rows >= 7(Y) or <= 2(O)
+
+                    // Apply bonuses/penalties based on piece type and position
+                    if (isWolfOrCat) {
+                        // Penalize Wolf/Cat Advancement
+                        score += rowsAdvanced * AI_WOLF_CAT_ADVANCE_PENALTY_MULT; // Negative multiplier!
+                        // Bonus for Wolf/Cat being defensive early/mid game
+                        if ((isEarlyGame || isMidGame) && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) {
+                             score += AI_WOLF_CAT_DEFENSE_BONUS;
+                        }
+                        // Apply Jumper Blocking Penalty
+                        const isBlockingRow = (playerForMax === PLAYERS.YELLOW && (rc.row === riverRowEnd + 1 || rc.row === riverRowEnd + 2)) ||
+                                              (playerForMax === PLAYERS.ORANGE && (rc.row === riverRowStart - 1 || rc.row === riverRowStart - 2));
+                        const isBlockingCol = jumpLandingCols.includes(rc.col);
+                        if (backRowJumpersExist && isBlockingRow && isBlockingCol) {
+                            score += AI_BLOCKING_JUMPER_PENALTY; // Drastic penalty
+                        }
+                    } else {
+                        // General Advancement for non-Wolf/Cat
+                        score += rowsAdvanced * AI_ADVANCE_BONUS_MULT; // Base advancement for others
+                        // Piece Specific Offensive Bonuses
+                        if (piece.rank === 7 || piece.rank === 6) score += rowsAdvanced * AI_JUMPER_OFFENSE_BONUS; // Jumpers
+                        if (piece.rank === 5) score += rowsAdvanced * AI_LEOPARD_OFFENSE_BONUS; // Leopard
+                        if (piece.rank === 3) score += rowsAdvanced * AI_DOG_OFFENSE_BONUS;     // Dog
+                        if (piece.rank === 1) score += rowsAdvanced * AI_RAT_OFFENSE_BONUS;      // Rat
+                        // General defensive penalty only for non-Wolf/Cat/Elephant
+                        if (isEarlyGame && piece.rank !== 8 && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) {
+                             score += AI_PIECE_TOO_DEFENSIVE_PENALTY;
                         }
                     }
 
-                    // 1b. Specific Piece Offensive Bonus (Encourage key pieces forward)
-                    if (piece.rank === 7 || piece.rank === 6) { // Jumper Bonus
-                         score += rowsAdvanced * AI_JUMPER_OFFENSE_BONUS; // Increased MORE
+                    // C) Past River & Center Control Bonus (Apply to all pieces)
+                    if (isPastRiver) {
+                        score += AI_PAST_RIVER_BONUS;
+                        if (centerCols.includes(rc.col)) score += AI_CENTER_CONTROL_BONUS;
                     }
-                    if (piece.rank === 1) score += rowsAdvanced * AI_RAT_OFFENSE_BONUS; // Increased MORE
 
-                    // 1c. Near Opponent Den General Bonus (last 3 rows)
+                    // D) Water Control Bonus
+                    if ((piece.rank === 1 || piece.rank === 3) && WATER_SQUARES.has(coords)) {
+                        score += AI_WATER_CONTROL_BONUS; // Increased
+                    }
+
+                    // E) Near Opponent Den General Bonus (last 3 rows)
                     const nearThreshold = playerForMax === PLAYERS.YELLOW ? 2 : 6;
                      if ((playerForMax === PLAYERS.YELLOW && rc.row <= nearThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= nearThreshold)) {
                         maxPiecesNearOppDen++;
                         score += AI_NEAR_OPP_DEN_BONUS;
                     }
 
-                    // 1d. Wolf/Cat Early Game Positioning
-                    const isWolfOrCat = piece.rank === 4 || piece.rank === 2;
-                    const defensiveRowThreshold = playerForMax === PLAYERS.YELLOW ? 6 : 2; // Rows 7,8,9 for Y; 1,2,3 for O
-                    if (isEarlyMidGame && isWolfOrCat) {
-                        if ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold)) {
-                             score += AI_WOLF_CAT_DEFENSE_BONUS; // Slight *bonus* for being defensive early
-                         }
-                    }
-                    // Apply general defensive penalty only if NOT Wolf/Cat early game
-                    else if (isEarlyMidGame && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) {
-                         if(piece.rank !== 8) score += AI_PIECE_TOO_DEFENSIVE_PENALTY; // General penalty (reduced)
-                    }
-
-                    // --- Blocker Penalty for Wolf/Cat ---
-                    if (isWolfOrCat && backRowJumpersExist) {
-                        // Is it on a jump landing row/col? Check rows 6/7 for Y, 3/4 for O
-                        const isBlockingRow = (playerForMax === PLAYERS.YELLOW && (rc.row === riverRowEnd + 1 || rc.row === riverRowEnd + 2)) ||
-                                              (playerForMax === PLAYERS.ORANGE && (rc.row === riverRowStart - 1 || rc.row === riverRowStart - 2));
-                        const isBlockingCol = jumpLandingCols.includes(rc.col);
-                        if (isBlockingRow && isBlockingCol) {
-                            score += AI_BLOCKING_JUMPER_PENALTY; // Drastic penalty
-                        }
-                    }
-
-                    // --- Water Control Bonus ---
-                    if ((piece.rank === 1 || piece.rank === 3) && WATER_SQUARES.has(coords)) {
-                        score += AI_WATER_CONTROL_BONUS; // Bonus for Rat/Dog in water
-                    }
-
-
-                    // 2. Trap Safety/Danger
+                    // F) Trap Safety/Danger
                     if (isOnTrapSquare(coords)) {
                          const adjacent = getAdjacentCoords(coords);
                          for(const adjCoord of adjacent) {
                             const adjPiece = boardState[adjCoord];
-                            if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) {
-                                score += AI_TRAP_DANGER_PENALTY;
-                                break;
-                            }
+                            if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) { score += AI_TRAP_DANGER_PENALTY; break; }
                          }
                     } else {
                          const adjacent = getAdjacentCoords(coords);
@@ -4524,10 +4500,7 @@
                                 for (const trapCoord of trapsNearOpponent) {
                                     if (trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
                                         const canCaptureFromTrap = adjPiece.rank >= piece.rank || (adjPiece.rank === 1 && piece.rank === 8 && !WATER_SQUARES.has(trapCoord));
-                                        if(canCaptureFromTrap) {
-                                            score += AI_TRAP_ATTACK_VULNERABILITY;
-                                            break;
-                                        }
+                                        if(canCaptureFromTrap) { score += AI_TRAP_ATTACK_VULNERABILITY; break; }
                                     }
                                 }
                             }
@@ -4535,58 +4508,42 @@
                          }
                     }
 
-                    // 3. Bonus for being near opponent's traps (offense)
-                    if (adjacentToMinTraps.has(coords)) {
-                         score += AI_NEAR_OPP_TRAP_BONUS;
-                    }
+                    // G) Bonus for being near opponent's traps (offense)
+                    if (adjacentToMinTraps.has(coords)) score += AI_NEAR_OPP_TRAP_BONUS;
 
-                    // 4. Bonus/Penalty based on Threats
+                    // H) Bonus/Penalty based on Threats
                      let isThreateningOpponent = false;
-                     for(const move of pieceMoves){
-                        if(boardState[move.to]?.player === opponent) {
-                            isThreateningOpponent = true;
-                            break;
-                        }
-                     }
-                     if(isThreateningOpponent){
-                         score += AI_THREATENS_OPPONENT_BONUS; // High bonus
-                     }
-                    if (threatsTo[coords]) { // This AI piece is threatened
-                        score += AI_IS_THREATENED_PENALTY; // Low penalty
-                    }
+                     for(const move of pieceMoves){ if(boardState[move.to]?.player === opponent) { isThreateningOpponent = true; break; } }
+                     if(isThreateningOpponent) score += AI_THREATENS_OPPONENT_BONUS; // High bonus
+                    if (threatsTo[coords]) score += AI_IS_THREATENED_PENALTY; // Low penalty
 
-
-                } else { // Opponent's piece (Minimizing)
+                }
+                // --- Evaluate OPPONENT PIECES ---
+                else {
                     minPieceCount++;
                     score -= pieceScore;
                     score -= offensiveMobilityBonus; // Subtract opponent's offensive potential
 
-                    // Subtract opponent threat bonus
+                    // Subtract opponent threat bonus (Penalize AI if opponent threatens AI pieces)
                      let opponentIsThreatening = false;
                      const oppPieceMoves = allOpponentMoves.filter(m => m.from === coords);
-                     for(const oppMove of oppPieceMoves){
-                         if(boardState[oppMove.to]?.player === playerForMax){
-                             opponentIsThreatening = true;
-                             break;
-                         }
-                     }
-                     if(opponentIsThreatening){
-                        score -= AI_THREATENS_OPPONENT_BONUS; // Penalize AI heavily if opponent threatens
-                     }
+                     for(const oppMove of oppPieceMoves){ if(boardState[oppMove.to]?.player === playerForMax){ opponentIsThreatening = true; break; } }
+                     if(opponentIsThreatening) score -= AI_THREATENS_OPPONENT_BONUS; // High penalty
 
-                    // 1. Immediate Threat Penalty
+
+                    // 1. Immediate Threat Penalty (Opponent near AI Den)
                     const isOnMaxTrap = maxTraps.has(coords);
                     const isAdjacentToMaxDen = adjacentToMaxDen.includes(coords);
                     if (isAdjacentToMaxDen || isOnMaxTrap) {
                         score += AI_NEAR_OWN_DEN_PENALTY; // Very Low Penalty
                          if (isValidMove(coords, maxDen, piece, boardState, true).valid && !piece.isHungry) {
-                             score += AI_IMMEDIATE_WIN_THREAT_PENALTY;
+                             score += AI_IMMEDIATE_WIN_THREAT_PENALTY; // High actual win threat penalty
                          }
                     }
-                     // Reward AI if opponent piece IS threatened by AI
-                     if (threatenedBy[coords]) {
+                    // Reward AI if opponent piece IS threatened by AI
+                    if (threatenedBy[coords]) {
                          score -= AI_IS_THREATENED_PENALTY; // Add small reward if opponent is threatened
-                     }
+                    }
                 }
             }
 
