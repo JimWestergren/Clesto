@@ -2060,6 +2060,75 @@
         }
 
         /**
+         * Checks if the specified player has any move that wins immediately (reaches opponent's den).
+         * @param {object} boardState - The board state to check.
+         * @param {string} player - The player whose winning moves to check.
+         * @returns {object|null} The winning move ({ from, to }) or null if none found.
+         */
+        function findImmediateWinningMove(boardState, player) {
+            const opponentDen = player === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+            const moves = getAllValidMoves(boardState, player, true); // Simulate when checking
+            for (const move of moves) {
+                if (move.to === opponentDen) {
+                    // Ensure the moving piece isn't hungry (hungry cannot win)
+                    if (!boardState[move.from]?.isHungry) {
+                        return move;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Checks if the opponent has any winning moves on their next turn.
+         * @param {object} currentBoardState - The current board state.
+         * @param {string} currentPlayer - The player whose turn it currently IS.
+         * @returns {Array<object>} An array of the opponent's winning moves [{ from, to }, ...]. Empty if none.
+         */
+        function getOpponentWinningMoves(currentBoardState, currentPlayer) {
+            const opponent = currentPlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
+            const opponentWinningMoves = [];
+            // Simulate opponent's perspective - opponent is 'player', current AI player's den is 'opponentDen'
+            const winningDenForOpponent = opponent === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+
+            const opponentMoves = getAllValidMoves(currentBoardState, opponent, true); // Simulate check
+            for (const move of opponentMoves) {
+                if (move.to === winningDenForOpponent) {
+                     // Ensure opponent piece isn't hungry
+                     if (!currentBoardState[move.from]?.isHungry) {
+                        opponentWinningMoves.push(move);
+                    }
+                }
+            }
+            return opponentWinningMoves;
+        }
+
+        /**
+         * Finds all moves the AI can make that prevent *all* of the opponent's immediate winning moves.
+         * @param {object} currentGameState - The current game state object.
+         * @param {Array<object>} aiMoves - All valid moves the AI can make.
+         * @param {Array<object>} opponentWins - The list of opponent's winning moves.
+         * @returns {Array<object>} A filtered list of AI moves that counter all threats.
+         */
+        function findCounterMoves(currentGameState, aiMoves, opponentWins) {
+            if (!opponentWins || opponentWins.length === 0) return aiMoves; // No threats to counter
+
+            const counterMoves = [];
+            for (const aiMove of aiMoves) {
+                // Simulate the AI making this move
+                const nextState = simulateMove(currentGameState, aiMove);
+                // Check if the opponent *still* has any winning moves in the resulting state
+                const opponentWinsAfterAIMove = getOpponentWinningMoves(nextState.board, nextState.currentPlayer); // Check opponent in the *new* state
+
+                if (opponentWinsAfterAIMove.length === 0) {
+                    // This AI move successfully prevents all opponent wins
+                    counterMoves.push(aiMove);
+                }
+            }
+            return counterMoves;
+        }
+
+        /**
          * Clears existing pieces from the board and places new ones based on the current game state.
          * Also applies initial hungry and trap indicator visuals.
          */
@@ -3485,9 +3554,10 @@
          * @param {string} toCoords - Ending algebraic coordinates.
          * @param {object} piece - The data object of the piece attempting the move (the ATTACKER).
          * @param {object} [currentBoardState=gameState.board] - Optional board state for simulation.
+         * @param {boolean} [isSimulation=false] - Flag to suppress detailed logging during AI simulation. // NEW PARAMETER
          * @returns {{valid: boolean, reason: string, reasonCode?: string}} An object indicating validity and reason.
          */
-        function isValidMove(fromCoords, toCoords, piece, currentBoardState = gameState.board) {
+        function isValidMove(fromCoords, toCoords, piece, currentBoardState = gameState.board, isSimulation = false) { // ADD isSimulation PARAMETER
             // --- Basic Checks ---
             if (!piece) return { valid: false, reason: "No piece selected." };
             if (fromCoords === toCoords) return { valid: false, reason: "Cannot move to the same square." };
@@ -3521,7 +3591,8 @@
                  const isHorizontalJump = toRC.row === fromRC.row && Math.abs(toRC.col - fromRC.col) === 3 && (fromRC.row >= 3 && fromRC.row <= 5);
                  if (isVerticalJump || isHorizontalJump) {
                      if ((isVerticalJump && !pieceAbilities.jumpV) || (isHorizontalJump && !pieceAbilities.jumpH)) return { valid: false, reason: "This animal cannot jump that way." };
-                     if (!checkJumpPathClear(fromRC, toRC, piece.player, currentBoardState)) return { valid: false, reason: "Jump path blocked by opponent in water." };
+                     // Pass isSimulation down to checkJumpPathClear
+                     if (!checkJumpPathClear(fromRC, toRC, piece.player, currentBoardState, isSimulation)) return { valid: false, reason: "Jump path blocked by opponent in water." };
                      isJumpValid = true;
                  }
              }
@@ -3536,7 +3607,11 @@
                 if (isOnTrapSquare(toCoords)) {
                     defenderEffectiveRank = 0;
                     defenderIsTrapped = true;
-                    console.log(`isValidMove Check: Defender ${targetPieceData.player} ${RANK_TO_NAME[targetPieceData.rank]}@${toCoords} is on a trap. Defender effective rank for capture = 0.`);
+                    // --- LOGGING WRAPPED ---
+                    if (!isSimulation) {
+                        console.log(`isValidMove Check: Defender ${targetPieceData.player} ${RANK_TO_NAME[targetPieceData.rank]}@${toCoords} is on a trap. Defender effective rank for capture = 0.`);
+                    }
+                    // --- END WRAP ---
                 }
                 const isRatAttackElephant = pieceRank === 1 && defenderOriginalRank === 8;
                 if (isRatAttackElephant && !isMovingFromWater) return { valid: true };
@@ -3551,12 +3626,11 @@
 
             // Check only if the current piece's player is the one restricted by repetition
             if (piece.player === restrictedPlayer) {
-                // Simulate the board state *if* this move were made
-                // Use JSON parse/stringify for a deep clone of the board state object
+                // Create a *temporary simulation* within this check
+                // Avoid deep copy if possible, make changes, check, then revert? No, deep copy safer.
                 const tempBoard = JSON.parse(JSON.stringify(currentBoardState));
-                const pieceDataToMove = tempBoard[fromCoords]; // Get the piece data
+                const pieceDataToMove = tempBoard[fromCoords];
 
-                // Ensure pieceDataToMove exists before proceeding
                 if (pieceDataToMove) {
                     if (tempBoard[toCoords]) { // Handle capture simulation
                         delete tempBoard[toCoords];
@@ -3565,25 +3639,27 @@
                     delete tempBoard[fromCoords]; // Delete from original position
 
                     const resultingStateString = getBoardStateString(tempBoard);
-                    // Access the main gameState's history for checking counts
+                    // Access the *main* gameState's history for checking counts, even during simulation
                     const repetitionCount = gameState.boardStateHistory[resultingStateString] || 0;
 
-                    // Check if this move would cause the 3rd (or more) repetition
-                    // Use >= 2 because if it has occurred twice already, this move makes the 3rd.
                     if (repetitionCount >= 2) {
-                         console.log(`isValidMove: Repetition rule block for ${piece.player}. Move ${fromCoords}->${toCoords} creates 3rd+ instance of state: ${resultingStateString} (Count: ${repetitionCount + 1})`);
-                         // Return invalid with a specific reason and code
+                         // --- LOGGING WRAPPED ---
+                         if (!isSimulation) {
+                            console.log(`isValidMove: Repetition rule block for ${piece.player}. Move ${fromCoords}->${toCoords} creates 3rd+ instance of state: ${resultingStateString} (Count: ${repetitionCount + 1})`);
+                         }
+                         // --- END WRAP ---
                         return { valid: false, reason: "Move creates 3rd repetition.", reasonCode: 'REPETITION_RULE' };
                     }
                 } else {
-                    // Should not happen if 'piece' is valid, but added as safeguard
-                    console.warn(`isValidMove: Could not find piece data at ${fromCoords} during repetition check simulation.`);
+                    // --- LOGGING WRAPPED ---
+                    if (!isSimulation) {
+                         console.warn(`isValidMove: Could not find piece data at ${fromCoords} during repetition check simulation.`);
+                    }
+                    // --- END WRAP ---
                 }
             }
             // --- END: Repetition Rule Check ---
 
-
-            // If all checks passed, including repetition rule
             return { valid: true };
         }
 
@@ -3593,9 +3669,11 @@
          * @param {{row: number, col: number}} fromRC - Start row/col indices.
          * @param {{row: number, col: number}} toRC - End row/col indices.
          * @param {string} attackerPlayer - The player making the jump ('orange' or 'yellow').
+         * @param {object} currentBoardState - The board state to check against.
+         * @param {boolean} [isSimulation=false] - Flag to suppress detailed logging. // NEW PARAMETER
          * @returns {boolean} True if the path is clear, false otherwise.
          */
-        function checkJumpPathClear(fromRC, toRC, attackerPlayer) {
+        function checkJumpPathClear(fromRC, toRC, attackerPlayer, currentBoardState, isSimulation = false) { // ADD isSimulation PARAMETER & currentBoardState
             const opponent = attackerPlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
             const startRow = Math.min(fromRC.row, toRC.row);
             const endRow = Math.max(fromRC.row, toRC.row);
@@ -3604,137 +3682,142 @@
 
             // Vertical Jump Check (column is the same)
             if (fromRC.col === toRC.col) {
-                // Check the 2 or 3 water squares between start and end row
                 for (let r = startRow + 1; r < endRow; r++) {
                     const coords = getCoords(r, fromRC.col);
-                    // All squares in the path must be water (this should always be true for valid jump coords)
                     if (!WATER_SQUARES.has(coords)) {
-                        console.warn(`Jump path check anomaly: ${coords} in vertical jump path is not water.`);
-                        return false; // Should not happen with correct jump logic
+                         // --- LOGGING WRAPPED ---
+                         if (!isSimulation) console.warn(`Jump path check anomaly: ${coords} in vertical jump path is not water.`);
+                         // --- END WRAP ---
+                        return false;
                     }
-                    // Check if an opponent's piece occupies a water square in the path
-                    const blockingPiece = getPieceData(coords);
-                    // Only opponent's pieces block the jump
+                    // Use the provided board state
+                    const blockingPiece = currentBoardState[coords]; // Check the simulated board
                     if (blockingPiece?.player === opponent) {
-                        console.log(`Jump blocked by opponent ${RANK_TO_NAME[blockingPiece.rank]} at ${coords}`);
-                        return false; // Path is blocked
+                         // --- LOGGING WRAPPED ---
+                         if (!isSimulation) console.log(`Jump blocked by opponent ${RANK_TO_NAME[blockingPiece.rank]} at ${coords}`);
+                         // --- END WRAP ---
+                        return false;
                     }
                 }
             }
             // Horizontal Jump Check (row is the same)
             else if (fromRC.row === toRC.row) {
-                 // Check the 1 or 2 water squares between start and end col
                 for (let c = startCol + 1; c < endCol; c++) {
                     const coords = getCoords(fromRC.row, c);
-                    // All squares must be water
                     if (!WATER_SQUARES.has(coords)) {
-                         console.warn(`Jump path check anomaly: ${coords} in horizontal jump path is not water.`);
+                         // --- LOGGING WRAPPED ---
+                         if (!isSimulation) console.warn(`Jump path check anomaly: ${coords} in horizontal jump path is not water.`);
+                         // --- END WRAP ---
                         return false;
                     }
-                    // Check for opponent's blocking piece
-                    const blockingPiece = getPieceData(coords);
+                    const blockingPiece = currentBoardState[coords]; // Check the simulated board
                     if (blockingPiece?.player === opponent) {
-                        console.log(`Jump blocked by opponent ${RANK_TO_NAME[blockingPiece.rank]} at ${coords}`);
-                        return false; // Path is blocked
+                         // --- LOGGING WRAPPED ---
+                         if (!isSimulation) console.log(`Jump blocked by opponent ${RANK_TO_NAME[blockingPiece.rank]} at ${coords}`);
+                         // --- END WRAP ---
+                        return false;
                     }
                 }
             } else {
-                // If not purely vertical or horizontal, it's not a valid jump path
-                console.error("checkJumpPathClear called with non-orthogonal jump coordinates.");
+                 // --- LOGGING WRAPPED ---
+                 if (!isSimulation) console.error("checkJumpPathClear called with non-orthogonal jump coordinates.");
+                 // --- END WRAP ---
                 return false;
             }
 
-            // If loop completes without finding blockers, the path is clear
             return true;
         }
 
 
         // --- Hungry/Starve Logic ---
 
-        /**
+         /**
          * Identifies all pieces for the specified player that are currently "hungry"
          * (i.e., have a valid capturing move available against an opponent piece).
          * Considers original ranks for triggering hunger, even if the target is trapped.
-         * Updates the `isHungry` property on the piece data in `gameState.board`.
          * @param {string} playerToDeclareFor - The player ('orange' or 'yellow') whose pieces should be checked.
+         * @param {object} [currentBoardState=gameState.board] - The board state to check against. // NEW PARAMETER
+         * @param {boolean} [isSimulation=false] - Flag to suppress detailed logging. // NEW PARAMETER
          * @returns {{hungryCount: number, hungryPiecesMap: object}} An object containing the count of hungry pieces
          *          and a map `{ coords: true }` for each hungry piece.
          */
-        function declareHungryAnimals(playerToDeclareFor) {
+        function declareHungryAnimals(playerToDeclareFor, currentBoardState = gameState.board, isSimulation = false) { // ADD isSimulation PARAMETER & currentBoardState
             let hungryCount = 0;
-            const hungryPiecesMap = {}; // Stores coords of hungry pieces: { 'a1': true, 'c3': true }
+            const hungryPiecesMap = {};
             const opponent = playerToDeclareFor === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
 
-            // Check each piece belonging to the specified player
-            for (const coords in gameState.board) {
-                const piece = gameState.board[coords];
+            for (const coords in currentBoardState) { // Iterate over the passed board state
+                const piece = currentBoardState[coords];
                 if (piece?.player === playerToDeclareFor) {
-                    // Get potential move destinations for this piece
                     const destinations = getPotentialMoveDestinations(coords, piece);
-                    let pieceDeclaredHungry = false; // Flag to stop checking destinations once hungry
+                    let pieceDeclaredHungry = false;
 
-                    // Check each destination
                     for (const targetCoords of destinations) {
-                         if (pieceDeclaredHungry) break; // Already found a reason for this piece to be hungry
+                         if (pieceDeclaredHungry) break;
 
-                        const targetPiece = gameState.board[targetCoords]; // Potential victim
+                        const targetPiece = currentBoardState[targetCoords]; // Check the simulated board
 
-                        // Is there an opponent piece at the destination?
                         if (targetPiece?.player === opponent) {
-                            // *** START: Modified Hunger Check Logic ***
-
-                            // Step 1: Check if the move is valid considering terrain, jumps, and *effective* capture rank (including traps)
-                            const validationResult = isValidMove(coords, targetCoords, piece);
+                            // Pass isSimulation down to isValidMove
+                            const validationResult = isValidMove(coords, targetCoords, piece, currentBoardState, isSimulation);
 
                             if (validationResult.valid) {
-                                // If the move is fully valid (including capture with traps), the piece is definitely hungry.
-                                console.log(`DeclareHungry: ${piece.player} ${RANK_TO_NAME[piece.rank]}@${coords} is hungry (can capture ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]}@${targetCoords} - trap included).`);
+                                // --- LOGGING WRAPPED ---
+                                if (!isSimulation) {
+                                    console.log(`DeclareHungry: ${piece.player} ${RANK_TO_NAME[piece.rank]}@${coords} is hungry (can capture ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]}@${targetCoords} - trap included).`);
+                                }
+                                // --- END WRAP ---
                                 hungryPiecesMap[coords] = true;
                                 hungryCount++;
-                                pieceDeclaredHungry = true; // Mark as hungry and move to next piece
+                                pieceDeclaredHungry = true;
                             } else if (validationResult.reasonCode === 'RANK_TOO_LOW') {
-                                // Step 2: If isValidMove failed *only* due to rank, check original ranks (ignore trap)
-                                console.log(`DeclareHungry: ${piece.player} ${RANK_TO_NAME[piece.rank]}@${coords} vs ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]}@${targetCoords} - Failed isValidMove due to rank. Checking original ranks...`);
+                                // --- LOGGING WRAPPED ---
+                                if (!isSimulation) {
+                                    console.log(`DeclareHungry: ${piece.player} ${RANK_TO_NAME[piece.rank]}@${coords} vs ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]}@${targetCoords} - Failed isValidMove due to rank. Checking original ranks...`);
+                                }
+                                // --- END WRAP ---
 
                                 const attackerRank = piece.rank;
                                 const defenderOriginalRank = targetPiece.rank;
                                 let canCaptureIgnoringTrap = false;
-
-                                // Special Case: Rat (1) vs Elephant (8) from land
                                 const isRatVsElephant = attackerRank === 1 && defenderOriginalRank === 8;
-                                const isMovingFromWater = WATER_SQUARES.has(coords); // Need origin coords here
+                                const isMovingFromWater = WATER_SQUARES.has(coords);
 
                                 if (isRatVsElephant && !isMovingFromWater) {
-                                    canCaptureIgnoringTrap = true; // Rat captures Elephant from land based on original ranks
+                                    canCaptureIgnoringTrap = true;
                                 } else if (attackerRank >= defenderOriginalRank) {
-                                    // General Case: Attacker >= Defender (using original ranks)
-                                    // Exclude Elephant (8) attacking Rat (1) based on original ranks, as Rat wins normally
                                     if (!(attackerRank === 8 && defenderOriginalRank === 1)) {
                                         canCaptureIgnoringTrap = true;
                                     }
                                 }
 
                                 if (canCaptureIgnoringTrap) {
-                                    console.log(`DeclareHungry: ---> YES, ${piece.player} ${RANK_TO_NAME[piece.rank]}@${coords} becomes hungry (can capture ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]}@${targetCoords} based on ORIGINAL ranks).`);
+                                    // --- LOGGING WRAPPED ---
+                                    if (!isSimulation) {
+                                        console.log(`DeclareHungry: ---> YES, ${piece.player} ${RANK_TO_NAME[piece.rank]}@${coords} becomes hungry (can capture ${targetPiece.player} ${RANK_TO_NAME[targetPiece.rank]}@${targetCoords} based on ORIGINAL ranks).`);
+                                    }
+                                    // --- END WRAP ---
                                     hungryPiecesMap[coords] = true;
                                     hungryCount++;
-                                    pieceDeclaredHungry = true; // Mark as hungry and move to next piece
+                                    pieceDeclaredHungry = true;
                                 } else {
-                                     console.log(`DeclareHungry: ---> NO, rank check failed even with original ranks.`);
+                                    // --- LOGGING WRAPPED ---
+                                    if (!isSimulation) {
+                                         console.log(`DeclareHungry: ---> NO, rank check failed even with original ranks.`);
+                                    }
+                                    // --- END WRAP ---
                                 }
                             }
-                            // If validationResult was false for other reasons (terrain, jump blocked, etc.), do nothing.
-                            // The piece cannot reach the target, so it doesn't get hungry from it.
-
-                            // *** END: Modified Hunger Check Logic ***
                         }
-                    } // End loop through destinations
+                    }
                 }
-            } // End loop through pieces
+            }
 
-            if (hungryCount > 0) {
+            // --- LOGGING WRAPPED ---
+            if (hungryCount > 0 && !isSimulation) {
                 console.log(`${playerToDeclareFor.toUpperCase()} has ${hungryCount} hungry animal(s) final map: ${Object.keys(hungryPiecesMap).join(', ')}`);
             }
+            // --- END WRAP ---
             return { hungryCount, hungryPiecesMap };
         }
 
@@ -3851,40 +3934,89 @@
         // --- AI Logic (Minimax) ---
 
         /**
-         * Initiates the AI's move calculation process.
-         * Calls the Minimax function to find the best move.
-         * Performs the chosen move or handles game end if no moves are possible.
+         * Main AI decision function. Implements prioritized checks before falling back to Minimax.
          */
         function triggerAIMove() {
             console.log("AI (Yellow) is thinking...");
-            // Find the best move using Minimax with alpha-beta pruning
-            const bestMoveResult = findBestMoveMinimax(MINIMAX_DEPTH, gameState, PLAYERS.YELLOW);
+            const player = PLAYERS.YELLOW; // AI is always Yellow for now
+            const aiStartTime = performance.now(); // Track thinking time
+
+            // 1. Get all valid moves for AI (not simulation here, actual valid moves)
+            const allMyMoves = getAllValidMoves(gameState.board, player, false); // isSimulation = false
+
+            if (allMyMoves.length === 0) {
+                console.log("AI has no valid moves! Checking game end conditions.");
+                // Handle stalemate/loss as before
+                if (!gameState.gameOver) {
+                    if (checkForStalemate(player)) {
+                        gameState.winner = null; gameState.gameOver = true;
+                        updateStatus("Stalemate! AI (Yellow) has no valid moves.");
+                        pauseAllClocks();
+                    } else {
+                        gameState.winner = PLAYERS.ORANGE; gameState.gameOver = true;
+                        updateStatus("AI Error or No Moves Found! Orange wins!");
+                        pauseAllClocks();
+                    }
+                    disablePlayerInteraction(); updateUI(); updateUndoButtonState();
+                }
+                return; // No moves to make
+            }
+
+            // --- Priority 1: Can AI win immediately? ---
+            const winningMove = findImmediateWinningMove(gameState.board, player);
+            if (winningMove) {
+                const aiEndTime = performance.now();
+                console.log(`AI Priority 1: Found winning move ${winningMove.from} -> ${winningMove.to}. Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
+                performMove(winningMove.from, winningMove.to);
+                return;
+            }
+
+            // --- Priority 2: Can opponent win next turn? ---
+            const opponentWinningMoves = getOpponentWinningMoves(gameState.board, player);
+            if (opponentWinningMoves.length > 0) {
+                console.log(`AI Priority 2: Opponent has potential winning move(s):`, opponentWinningMoves);
+                // Find AI moves that counter ALL opponent winning moves
+                const counterMoves = findCounterMoves(gameState, allMyMoves, opponentWinningMoves);
+
+                if (counterMoves.length > 0) {
+                    console.log(`AI Priority 2: Found counter-move(s):`, counterMoves);
+                    // Choose the best counter-move (e.g., using evaluation or shallow search)
+                    let bestCounterMove = null;
+                    let bestCounterScore = -Infinity;
+                    for (const counter of counterMoves) {
+                         // Simple evaluation for now, could use shallow minimax later
+                         const nextState = simulateMove(gameState, counter);
+                         const score = evaluateBoard(nextState.board, player); // Use the enhanced evaluateBoard
+                         if (score > bestCounterScore) {
+                             bestCounterScore = score;
+                             bestCounterMove = counter;
+                         }
+                    }
+                     const aiEndTime = performance.now();
+                     console.log(`AI Priority 2: Choosing best counter ${bestCounterMove.from} -> ${bestCounterMove.to} (Score: ${bestCounterScore}). Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
+                    performMove(bestCounterMove.from, bestCounterMove.to);
+                    return;
+                } else {
+                    // No way to stop opponent win - AI concedes or makes a default move
+                    console.log(`AI Priority 2: Cannot stop all opponent winning moves! Making default best move.`);
+                    // Fall through to Minimax to pick the 'least bad' option or highest score move
+                }
+            }
+
+            // --- Fallback: Priorities 3-12 handled by Minimax + Enhanced Evaluation ---
+            console.log(`AI Fallback: Running Minimax (Depth: ${MINIMAX_DEPTH})...`);
+            const bestMoveResult = findBestMoveMinimax(MINIMAX_DEPTH, gameState, player); // Use the existing minimax
 
             if (bestMoveResult?.move) {
-                // If a best move is found, perform it
-                console.log(`AI chooses move: ${bestMoveResult.move.from} to ${bestMoveResult.move.to} (Score: ${bestMoveResult.score})`);
+                const aiEndTime = performance.now();
+                console.log(`AI Fallback: Chose move ${bestMoveResult.move.from} -> ${bestMoveResult.move.to} (Score: ${bestMoveResult.score.toFixed(2)}). Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
                 performMove(bestMoveResult.move.from, bestMoveResult.move.to);
             } else {
-                // If AI has no valid moves (should be caught by stalemate check earlier, but as a fallback)
-                console.log("AI has no valid moves! Checking game end conditions.");
-                if (!gameState.gameOver) {
-                    if (checkForStalemate(PLAYERS.YELLOW)) {
-                        // If it's genuinely stalemate
-                        gameState.winner = null; // No winner in stalemate
-                        gameState.gameOver = true;
-                        updateStatus("Stalemate! AI (Yellow) has no valid moves.");
-                        pauseAllClocks(); // Stop clocks
-                    } else {
-                        // If not stalemate but AI failed to find a move (error or unexpected state)
-                        gameState.winner = PLAYERS.ORANGE; // Opponent wins
-                        gameState.gameOver = true;
-                        updateStatus("AI Error or No Moves Found! Orange wins!");
-                        pauseAllClocks(); // Stop clocks
-                    }
-                    disablePlayerInteraction();
-                    updateUI();
-                    updateUndoButtonState();
-                }
+                 // Should have been caught by initial empty move check, but as final safety
+                 const aiEndTime = performance.now();
+                console.error(`AI ERROR: Minimax failed to find a move, but valid moves existed? Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s. Choosing random.`);
+                 const randomMove = allMyMoves[Math.floor(Math.random() * allMyMoves.length)];
+                 performMove(randomMove.from, randomMove.to);
             }
         }
 
@@ -3897,80 +4029,70 @@
          * @returns {{move: object, score: number}|null} The best move found ({from, to}) and its score, or null if no moves.
          */
         function findBestMoveMinimax(depth, currentGameState, playerForMax) {
-            let bestScore = -Infinity; // Initialize best score for maximizing player
+            let bestScore = -Infinity;
             let bestMove = null;
 
-            // Get all possible valid moves for the AI
-            const possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer);
+            // Get all possible valid moves for the AI, flagging as simulation
+            const possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer, true); // Pass true for isSimulation
             const opponentDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
 
-            // If no moves are possible, return null
             if (possibleMoves.length === 0) {
                 console.log("AI findBestMove: No possible moves found.");
                 return null;
             }
 
             // --- Immediate Win Check ---
-            // Check if any move leads directly to the opponent's den (instant win)
             for (const move of possibleMoves) {
                 if (move.to === opponentDen) {
                     console.log("AI Found immediate winning move to Den:", move);
-                    // Assign a very high score, factoring in depth (faster win is better)
                     return { move: move, score: 10000 + depth };
                 }
             }
 
             // --- Handle Hungry Pieces Obligation ---
-            // Identify which of the possible moves are made by hungry pieces
+            // Use the currentGameState.board which reflects the *actual* current hungry state
             const hungryMoves = possibleMoves.filter(move => currentGameState.board[move.from]?.isHungry);
-            let movesToConsider = possibleMoves; // Default to considering all moves
+            let movesToConsider = possibleMoves;
 
             if (hungryMoves.length > 0) {
-                // If there are hungry pieces, check if any of their moves are attacks
                 const attackingHungryMoves = hungryMoves.filter(move => !!currentGameState.board[move.to]);
                 if (attackingHungryMoves.length > 0) {
-                    // Rule: If a hungry piece *can* attack, it *must*. Only consider attacking moves by hungry pieces.
+                    // --- LOGGING KEPT (Top Level Decision) ---
                     console.log("AI considering only ATTACKING moves by hungry pieces:", attackingHungryMoves);
+                    // --- END LOG ---
                     movesToConsider = attackingHungryMoves;
                 } else {
-                    // Rule: If hungry pieces exist but none can attack, they must still move. Consider only moves by hungry pieces.
+                     // --- LOGGING KEPT (Top Level Decision) ---
                     console.log("AI considering only non-attacking moves by hungry pieces:", hungryMoves);
+                    // --- END LOG ---
                     movesToConsider = hungryMoves;
                 }
             }
-            // If no hungry pieces, movesToConsider remains all possibleMoves.
 
             // --- Evaluate Moves using Minimax ---
-            // Iterate through the prioritized list of moves
             for (const move of movesToConsider) {
-                // Simulate the move to get the resulting board state
+                // Simulate the move (simulateMove handles calculating next state's hungry pieces)
                 const nextState = simulateMove(currentGameState, move);
                 // Call minimax for the opponent's turn (minimizing player)
-                // Alpha/Beta are initialized to worst-case values
                 const score = minimax(depth - 1, nextState, false, -Infinity, Infinity, playerForMax);
 
-                // --- Add Randomness (Tie-breaking) ---
-                // Add a small random value to scores that aren't immediate wins/losses
-                // This prevents the AI from always making the same move in equivalent situations.
                 let currentScore = score;
-                if (Math.abs(score) < 5000) { // Don't add randomness to clear win/loss scores
-                    currentScore += Math.random() * 0.1; // Small random factor
+                if (Math.abs(score) < 5000) { // Add randomness for non-critical moves
+                    currentScore += Math.random() * 0.1;
                 }
 
-                // Update best move if current move yields a higher score
                 if (currentScore > bestScore) {
                     bestScore = currentScore;
                     bestMove = move;
                 }
             }
 
-             // Fallback: If no best move was found among considered moves (e.g., all led to immediate loss)
-             // but there were other possible moves initially, pick a random valid move to avoid crashing.
-             // This should ideally not happen if evaluation/minimax is correct.
             if (!bestMove && possibleMoves.length > 0) {
-                console.warn("Minimax didn't find a best move among 'movesToConsider'. Picking random valid move as fallback.");
-                bestMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-                bestScore = -Infinity; // Assign a low score as it's a fallback
+                 // --- LOGGING KEPT (Fallback Warning) ---
+                 console.warn("Minimax didn't find a best move among 'movesToConsider'. Picking random valid move as fallback.");
+                 // --- END LOG ---
+                 bestMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+                 bestScore = -Infinity;
             }
 
             return { move: bestMove, score: bestScore };
@@ -3989,28 +4111,25 @@
          */
         function minimax(depth, nodeGameState, isMaximizingPlayer, alpha, beta, playerForMax) {
             // --- Base Cases for Recursion ---
-            // 1. Reached maximum depth or game is over in this simulated state
             if (depth === 0 || nodeGameState.gameOver) {
-                const baseScore = evaluateBoard(nodeGameState.board, playerForMax);
-                // Add/subtract remaining depth to prioritize faster wins/slower losses
-                if (baseScore > 5000) return baseScore + depth; // Faster win is better
-                if (baseScore < -5000) return baseScore - depth; // Slower loss is better
-                return baseScore; // Return static evaluation
+                const baseScore = evaluateBoard(nodeGameState.board, playerForMax); // Pass board only
+                if (baseScore > 5000) return baseScore + depth;
+                if (baseScore < -5000) return baseScore - depth;
+                return baseScore;
             }
 
-            // Get possible moves from the current node state
-            const possibleMoves = getAllValidMoves(nodeGameState.board, nodeGameState.currentPlayer);
+            // Get possible moves from the current node state, flagging as simulation
+            const possibleMoves = getAllValidMoves(nodeGameState.board, nodeGameState.currentPlayer, true); // Pass true for isSimulation
 
-            // 2. No moves possible (Stalemate or Checkmate in simulation)
+            // No moves possible (Stalemate/Loss in simulation)
             if (possibleMoves.length === 0) {
-                // Check if it's a stalemate (draw = 0) or if the current player lost (win for opponent)
-                // A stalemate means the player whose turn it IS cannot move.
-                // If maximizing player cannot move, it's a loss (-10k). If minimizing player cannot move, it's a win (+10k).
+                 // If maximizing player (AI) has no moves -> loss
+                 // If minimizing player (Human) has no moves -> win
                 return isMaximizingPlayer ? (-10000 - depth) : (10000 + depth);
             }
 
             // --- Handle Hungry Pieces Obligation (within simulation) ---
-             // Prioritize moves based on hungry rules, same logic as in findBestMoveMinimax
+            // Use the nodeGameState.board which has hungry status calculated by simulateMove
             const hungryMoves = possibleMoves.filter(move => nodeGameState.board[move.from]?.isHungry);
             let movesToConsider = possibleMoves;
             if (hungryMoves.length > 0) {
@@ -4026,19 +4145,17 @@
             if (isMaximizingPlayer) { // AI's turn (maximize score)
                 let maxEval = -Infinity;
                 for (const move of movesToConsider) {
-                    const nextState = simulateMove(nodeGameState, move); // Simulate the move
+                    // simulateMove handles board changes and next turn's hungry status
+                    const nextState = simulateMove(nodeGameState, move);
                     // Recursive call for the minimizing player's turn
                     const evaluation = minimax(depth - 1, nextState, false, alpha, beta, playerForMax);
                     maxEval = Math.max(maxEval, evaluation); // Update max score found
                     alpha = Math.max(alpha, evaluation); // Update alpha (best for maximizer)
                     if (beta <= alpha) {
-                        break; // Beta cutoff (minimizer already found a better option elsewhere)
+                        break; // Beta cutoff
                     }
                 }
-                 // Fallback if all 'movesToConsider' led to immediate loss/bad score
-                 // Check if there were *any* possible moves initially. If so, evaluate one as fallback.
                  if (maxEval === -Infinity && possibleMoves.length > 0 && movesToConsider.length < possibleMoves.length) {
-                      console.log(`Minimax Max fallback: Evaluating non-hungry move at depth ${depth}`);
                       const nonHungryMove = possibleMoves.find(m => !movesToConsider.some(consMove => consMove.from === m.from && consMove.to === m.to)) || possibleMoves[0];
                       const fallbackState = simulateMove(nodeGameState, nonHungryMove);
                       return minimax(depth -1, fallbackState, false, alpha, beta, playerForMax);
@@ -4053,15 +4170,13 @@
                     minEval = Math.min(minEval, evaluation); // Update min score found
                     beta = Math.min(beta, evaluation); // Update beta (best for minimizer)
                     if (beta <= alpha) {
-                        break; // Alpha cutoff (maximizer already found a better option elsewhere)
+                        break; // Alpha cutoff
                     }
                 }
-                 // Similar fallback for minimizer
                  if (minEval === Infinity && possibleMoves.length > 0 && movesToConsider.length < possibleMoves.length) {
-                      console.log(`Minimax Min fallback: Evaluating non-hungry move at depth ${depth}`);
-                      const nonHungryMove = possibleMoves.find(m => !movesToConsider.some(consMove => consMove.from === m.from && consMove.to === m.to)) || possibleMoves[0];
-                      const fallbackState = simulateMove(nodeGameState, nonHungryMove);
-                      return minimax(depth -1, fallbackState, true, alpha, beta, playerForMax);
+                     const nonHungryMove = possibleMoves.find(m => !movesToConsider.some(consMove => consMove.from === m.from && consMove.to === m.to)) || possibleMoves[0];
+                     const fallbackState = simulateMove(nodeGameState, nonHungryMove);
+                     return minimax(depth -1, fallbackState, true, alpha, beta, playerForMax);
                  }
                 return minEval;
             }
@@ -4071,9 +4186,10 @@
          * Generates a list of all valid moves for a given player in a specific board state.
          * @param {object} boardState - The board state object ({ coords: pieceData }).
          * @param {string} player - The player ('orange' or 'yellow') whose moves to find.
+         * @param {boolean} [isSimulation=false] - Flag to pass down to isValidMove. // NEW PARAMETER
          * @returns {Array<object>} An array of valid move objects [{ from, to }, ...].
          */
-        function getAllValidMoves(boardState, player) {
+        function getAllValidMoves(boardState, player, isSimulation = false) { // ADD isSimulation
             const validMoves = [];
             if (!boardState) return []; // Safety check
 
@@ -4086,8 +4202,8 @@
                     const destinations = getPotentialMoveDestinations(fromCoords, piece);
                     // Validate each potential destination
                     for (const toCoords of destinations) {
-                        // Use isValidMove with a copy of piece data to avoid state mutation issues
-                        if (isValidMove(fromCoords, toCoords, { ...piece }, boardState).valid) {
+                        // Use isValidMove with a copy of piece data and pass isSimulation flag
+                        if (isValidMove(fromCoords, toCoords, { ...piece }, boardState, isSimulation).valid) { // Pass isSimulation
                             validMoves.push({ from: fromCoords, to: toCoords });
                         }
                     }
@@ -4098,8 +4214,7 @@
 
         /**
          * Creates a new game state object representing the result of making a specific move.
-         * Does *not* handle hungry/starve rules or complex win conditions, focuses on board changes.
-         * Used for AI simulation.
+         * Updates hungry status for the *next* player. Does not handle full starvation rules.
          * @param {object} currentGameState - The game state *before* the move.
          * @param {object} move - The move object { from, to }.
          * @returns {object} A new game state object representing the state *after* the move.
@@ -4110,46 +4225,46 @@
                 board: JSON.parse(JSON.stringify(currentGameState.board)),
                 currentPlayer: currentGameState.currentPlayer, // Temporarily keep current player
                 gameOver: false, // Assume game not over unless conditions met
-                winner: null
+                winner: null,
+                // Important: Don't copy boardStateHistory, moveHistory etc. for simulation
             };
 
             const piece = nextState.board[move.from];
 
-            // Error handling: If piece doesn't exist at source (shouldn't happen with valid moves)
             if (!piece) {
-                console.error("SimulateMove Error: Piece not found at source", move.from, "Current Board:", currentGameState.board);
-                // Mark game as over, opponent wins (as current player can't move)
+                console.error("SimulateMove Error: Piece not found at source", move.from);
+                // Mark game as over, opponent wins
                 nextState.gameOver = true;
                 nextState.winner = currentGameState.currentPlayer === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
                 return nextState;
             }
 
-            // Simulate capture by deleting piece at destination (if any)
+            // Simulate capture
             const targetPiece = nextState.board[move.to];
             if (targetPiece) {
-                // In simulation, we just remove the piece from the board state
                 delete nextState.board[move.to];
             }
 
-            // Move the piece in the board state
+            // Move the piece
             nextState.board[move.to] = piece;
             delete nextState.board[move.from];
+            // Reset hungry status of the piece that just moved (it satisfied hunger if it was hungry)
+            nextState.board[move.to].isHungry = false;
 
-            // --- Simplified Win Condition Checks for Simulation ---
+
+            // --- Simplified Win Condition Checks ---
             const opponent = piece.player === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
             const opponentDen = piece.player === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
 
-            // 1. Reached opponent's den
             if (move.to === opponentDen) {
                 nextState.gameOver = true;
                 nextState.winner = piece.player;
             } else {
-                // 2. Check if opponent has any pieces left (simplified check)
                 let opponentPieceCount = 0;
                 for (const coords in nextState.board) {
                     if (nextState.board[coords]?.player === opponent) {
                         opponentPieceCount++;
-                        break; // Found one, no need to count all
+                        break;
                     }
                 }
                 if (opponentPieceCount === 0) {
@@ -4158,18 +4273,19 @@
                 }
             }
 
-            // Switch the current player for the next node in the simulation tree
+            // --- Switch Player and Update Hungry Status (for simulation) ---
             nextState.currentPlayer = opponent;
 
-             // Update hungry status for the *next* player in the simulated state
-             // This is crucial for the minimax evaluation to correctly consider forced moves.
-             const { hungryPiecesMap } = declareHungryAnimals(nextState.currentPlayer); // Use the *new* current player
-             Object.keys(nextState.board).forEach(coords => {
+            // Update hungry status for the *next* player in the simulated state
+            // Pass the *new* board state and isSimulation=true
+            const { hungryPiecesMap } = declareHungryAnimals(nextState.currentPlayer, nextState.board, true); // Pass true for isSimulation
+            Object.keys(nextState.board).forEach(coords => {
                  const p = nextState.board[coords];
                  if (p) {
-                     p.isHungry = !!hungryPiecesMap[coords];
+                    // Reset hungry status unless declared hungry for the next turn
+                    p.isHungry = !!hungryPiecesMap[coords];
                  }
-             });
+            });
 
 
             return nextState;
@@ -4177,94 +4293,160 @@
 
         /**
          * Evaluates the static board state from the perspective of the AI player (playerForMax).
-         * Assigns scores based on piece values, positional advantage, den/trap threats, and win/loss conditions. // <-- Updated comment
+         * Incorporates heuristics for position, threats, traps, and piece values. // <-- Updated comment
          * @param {object} boardState - The board state to evaluate.
          * @param {string} playerForMax - The player considered "maximizing" (AI, usually Yellow).
          * @returns {number} A numerical score representing the board state's favorability for playerForMax.
-         *          Positive scores favor playerForMax, negative scores favor the opponent.
-         *          Very large positive/negative scores indicate win/loss.
          */
-        function evaluateBoard(boardState, playerForMax) {
+        function evaluateBoard(boardState, playerForMax) { // Task 34 Enhancement
             let score = 0;
-            const pieceValues = { 1: 35, 2: 10, 3: 40, 4: 30, 5: 50, 6: 70, 7: 80, 8: 75 }; // Rat:35, Cat:10, Dog:40, Wolf:30, Leopard:50, Tiger:70, Lion:80, Elephant:75
+            const pieceValues = { 1: 40, 2: 10, 3: 45, 4: 30, 5: 50, 6: 75, 7: 85, 8: 80 }; // Adjusted values slightly (Rat/Dog maybe higher?)
             const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
 
             // Dens and Traps relative to the player being evaluated (playerForMax)
             const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow; // playerForMax's own den
             const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange; // Opponent's den (target)
-            // Traps near playerForMax's den (where opponent pieces are penalized)
-            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange;
-            // Traps near opponent's den (where playerForMax pieces get bonus for proximity)
-            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow; // Identify opponent's traps (near AI's den)
+            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange; // Traps near AI den
+            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow; // Traps near Opponent den
 
-            const adjacentToMaxDen = getAdjacentCoords(maxDen); // Squares next to playerForMax's den
-            // Calculate squares adjacent to the traps near the opponent's den (using helper)
-            const adjacentToMinTraps = getAdjacentCoordsSet(minTraps);
+            const adjacentToMaxDen = getAdjacentCoords(maxDen);
+            const adjacentToMinDen = getAdjacentCoords(minDen);
+            const adjacentToMinTraps = getAdjacentCoordsSet(minTraps); // Adjacency for AI bonus near opponent traps
 
             // --- Evaluation Constants ---
-            const IMMEDIATE_THREAT_PENALTY = 750;  // Penalty for opponent near AI den/traps
-            const NEAR_OPPONENT_TRAP_BONUS = 50;   // Bonus for AI near opponent's traps (tune if needed)
-            const DEN_PROXIMITY_MULTIPLIER = 0.5; // Bonus multiplier for distance to opponent den
+            const WIN_SCORE = 10000;
+            const LOSE_SCORE = -10000;
+            const IMMEDIATE_THREAT_PENALTY = -2000; // Opponent adjacent/on trap near AI den AND can move in
+            const NEAR_DEN_PENALTY = -500;        // Opponent just near AI den/traps
+            const NEAR_OPPONENT_DEN_BONUS = 15;    // Bonus for AI near opponent's den
+            const NEAR_OPPONENT_TRAP_BONUS = 10;   // Bonus for AI near opponent's traps (offense)
+            const TRAP_DANGER_PENALTY = -150;       // AI piece vulnerable ON a trap
+            const TRAP_ATTACK_VULNERABILITY = -100; // AI piece vulnerable TO a trap attack
+            const ADVANCE_BONUS_MULTIPLIER = 0.3;  // Bonus per row advanced
+            const MULTI_ATTACKER_BONUS = 25;     // Bonus for having multiple pieces near opponent den
 
             let maxHasWon = false;
             let minHasWon = false;
             let maxPieceCount = 0;
             let minPieceCount = 0;
+            let maxAdvancedPieces = 0; // Count pieces past midline
+            let maxPiecesNearOppDen = 0; // Count pieces in opponent's first 3 rows
 
+            // --- Pre-checks for immediate win/loss ---
+            // Check if opponent is already IN AI's den
+            if (boardState[maxDen]?.player === opponent) return LOSE_SCORE;
+            // Check if AI is already IN opponent's den
+            if (boardState[minDen]?.player === playerForMax) return WIN_SCORE;
+
+
+            // --- Iterate through pieces ---
             for (const coords in boardState) {
                 const piece = boardState[coords];
                 if (!piece) continue;
 
-                let pieceScore = pieceValues[piece.rank] || 0;
                 const rc = getRowCol(coords);
+                if (!rc) continue; // Should not happen
 
-                // --- Evaluate based on player ---
-                if (piece.player === playerForMax) { // Piece belongs to the AI (maximizing player)
+                let pieceScore = pieceValues[piece.rank] || 0;
+                const pieceAbilities = SPECIAL_ABILITIES[piece.rank] || {};
+
+                if (piece.player === playerForMax) { // AI's piece (Maximizing)
                     maxPieceCount++;
-                    // --- Positional Bonuses for playerForMax ---
-                    // 1. Proximity to opponent's den (the target)
-                    const targetDenRC = getRowCol(minDen);
-                    if (rc && targetDenRC) {
-                        const dist = Math.abs(rc.row - targetDenRC.row) + Math.abs(rc.col - targetDenRC.col);
-                        // Bonus increases as distance decreases (16 is roughly max possible distance)
-                        pieceScore += (16 - dist) * DEN_PROXIMITY_MULTIPLIER;
+                    score += pieceScore;
+
+                    // 1. Positional Bonus: Advancing towards opponent den
+                    const targetDenRow = getRowCol(minDen).row; // 0 for Yellow, 8 for Orange
+                    const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (rc.row) : (ROWS - 1 - rc.row); // Yellow wants lower row index, Orange wants higher
+                    score += rowsAdvanced * ADVANCE_BONUS_MULTIPLIER;
+                    if (rowsAdvanced > (ROWS / 2)) maxAdvancedPieces++;
+                     // Count pieces near opponent den (e.g., last 3 rows)
+                     const nearThreshold = playerForMax === PLAYERS.YELLOW ? 2 : 6; // Rows 0,1,2 for Yellow; Rows 8,7,6 for Orange
+                     if ((playerForMax === PLAYERS.YELLOW && rc.row <= nearThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= nearThreshold)) {
+                        maxPiecesNearOppDen++;
+                        score += NEAR_OPPONENT_DEN_BONUS; // Add bonus for being close
                     }
-                    // 2. Proximity to opponent's traps (near AI's own den - defensive bonus)
+
+
+                    // 2. Trap Safety/Danger for AI piece
+                    if (isOnTrapSquare(coords)) {
+                         // AI is ON a trap. Check if adjacent opponent can capture.
+                         const adjacent = getAdjacentCoords(coords);
+                         for(const adjCoord of adjacent) {
+                            const adjPiece = boardState[adjCoord];
+                            if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) { // Opponent can move onto AI's trap square
+                                score += TRAP_DANGER_PENALTY; // Penalty for being vulnerable on trap
+                                break; // Apply penalty once per piece
+                            }
+                         }
+                    } else {
+                        // AI is NOT on a trap. Check if adjacent opponent could capture it by moving onto an adjacent *trap*.
+                         const adjacent = getAdjacentCoords(coords);
+                         for(const adjCoord of adjacent) {
+                            const adjPiece = boardState[adjCoord];
+                            // Is opponent adjacent?
+                            if(adjPiece?.player === opponent) {
+                                // Can opponent attack AI piece? (Check standard capture first)
+                                // Now, check if opponent could move to an *adjacent trap* and capture AI piece from there
+                                const trapsNearOpponent = getAdjacentCoords(adjCoord).filter(c => isOnTrapSquare(c));
+                                for (const trapCoord of trapsNearOpponent) {
+                                    // Can opponent move to this trap AND would that trap move allow capture of AI piece?
+                                    // Note: Attacker rank is NOT reduced when attacking FROM trap
+                                    if (trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
+                                        // Opponent can move to the trap. Now, can they attack AI from there?
+                                        // Check rank comparison directly (attacker rank vs AI piece rank)
+                                        if(adjPiece.rank >= piece.rank || (adjPiece.rank === 1 && piece.rank === 8 && !WATER_SQUARES.has(trapCoord))) { // Rat exception only from land trap
+                                            score += TRAP_ATTACK_VULNERABILITY;
+                                            break; // Apply penalty once
+                                        }
+                                    }
+                                }
+                            }
+                            if (score < 0) break; // Stop checking if penalty applied
+                         }
+                    }
+
+                    // 3. Bonus for being near opponent's traps (offense)
                     if (adjacentToMinTraps.has(coords)) {
-                        console.log(`--- AI Bonus: ${RANK_TO_NAME[piece.rank]}@${coords} is adjacent to opponent trap (near own den). Applying bonus: +${NEAR_OPPONENT_TRAP_BONUS}`);
-                        pieceScore += NEAR_OPPONENT_TRAP_BONUS;
+                         score += NEAR_OPPONENT_TRAP_BONUS;
                     }
 
-                    score += pieceScore; // Add piece value and bonuses to total score
 
-                    // Check if playerForMax reached opponent's den (win condition)
-                    if (coords === minDen) maxHasWon = true;
-
-                } else { // Piece belongs to the opponent (minimizing player)
+                } else { // Opponent's piece (Minimizing)
                     minPieceCount++;
-                    // --- Penalties based on opponent's position ---
-                    // 1. Opponent reached playerForMax's den (loss condition)
-                    if (coords === maxDen) minHasWon = true;
+                    score -= pieceScore;
 
-                    // 2. Check for Immediate Threats to playerForMax's Den
-                    const isOnMaxTrap = maxTraps.has(coords); // Opponent is on a trap near AI's den
-                    const isAdjacentToMaxDen = adjacentToMaxDen.includes(coords); // Opponent is next to AI's den
+                    // 1. Immediate Threat Penalty
+                    const isOnMaxTrap = maxTraps.has(coords);
+                    const isAdjacentToMaxDen = adjacentToMaxDen.includes(coords);
 
-                    if (isOnMaxTrap || isAdjacentToMaxDen) {
-                         // Apply large penalty if opponent is on AI's trap OR adjacent to AI's den
-                         console.log(`!!! Immediate threat detected: Opponent ${RANK_TO_NAME[piece.rank]} at ${coords} (Trap: ${isOnMaxTrap}, Adjacent: ${isAdjacentToMaxDen}). Applying penalty: -${IMMEDIATE_THREAT_PENALTY}`);
-                         score -= IMMEDIATE_THREAT_PENALTY;
+                    if (isAdjacentToMaxDen || isOnMaxTrap) {
+                        score += NEAR_DEN_PENALTY; // General penalty for being close
+                        // Check if opponent can ACTUALLY enter den next turn
+                         if (isValidMove(coords, maxDen, piece, boardState, true).valid && !piece.isHungry) {
+                             score += IMMEDIATE_THREAT_PENALTY; // High penalty if can win NOW
+                         }
                     }
 
-                    score -= pieceScore; // Subtract opponent's piece value from total score
+                    // 2. Penalty for opponent controlling squares near AI's traps (defense)
+                     const adjacentToMaxTraps = getAdjacentCoordsSet(maxTraps);
+                    if (adjacentToMaxTraps.has(coords)) {
+                         score -= 5; // Small penalty for opponent near AI traps
+                    }
+
                 }
             }
 
-            // --- Check for Win/Loss by Den or Elimination ---
-            if (maxHasWon || minPieceCount === 0) return 10000; // Maximizing player wins
-            if (minHasWon || maxPieceCount === 0) return -10000; // Minimizing player wins
+            // --- Post-Iteration Checks ---
+            // Win/Loss by Elimination
+            if (minPieceCount === 0) return WIN_SCORE;
+            if (maxPieceCount === 0) return LOSE_SCORE; // Should have been caught by piece check, but safety
 
-            return score;
+             // Bonus for multiple attackers near opponent den
+             if (maxPiecesNearOppDen >= 2) {
+                 score += MULTI_ATTACKER_BONUS * maxPiecesNearOppDen; // Scale bonus slightly
+             }
+
+            return score; // Return final calculated score
         }
 
 
