@@ -10,9 +10,21 @@
     <!-- Preload key visual assets -->
     <link rel="preload" as="image" href="https://staticjw.com/clesto/board.png">
     <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/elephant-orange.png">
-    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/lion-orange.png">
     <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/elephant-yellow.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/lion-orange.png">
     <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/lion-yellow.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/tiger-orange.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/tiger-yellow.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/leopard-orange.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/leopard-yellow.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/wolf-orange.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/wolf-yellow.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/dog-orange.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/dog-yellow.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/cat-orange.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/cat-yellow.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/rat-orange.png">
+    <link rel="preload" as="image" href="https://staticjw.com/clesto/animals/rat-yellow.png">
 
     <style>
         /* --- Global Variables & Basic Setup --- */
@@ -817,6 +829,33 @@
         }
 
         /* --- Logs --- */
+
+        /* Basic styling for the copy button */
+        .copy-button {
+            display: inline-block; /* Or block depending on desired layout */
+            padding: 4px 8px;
+            margin-bottom: 5px; /* Space below button, above log */
+            font-size: 0.9em;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+            transition: background-color 0.2s ease;
+        }
+
+        .copy-button:hover {
+            background-color: #e0e0e0;
+        }
+
+        .copy-button:active {
+            background-color: #d0d0d0;
+        }
+
+        .copy-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
         #move-log {
             height: 220px;
             overflow-y: auto;
@@ -1203,7 +1242,7 @@
 
 <body>
 
-    <!--<h1>CLESTO: The Jungle Chess Game</h1>-->
+    <!-- <h1>CLESTO: The Jungle Chess Game</h1> -->
 
     <main id="game-container" role="main">
         <!-- Game Board Section -->
@@ -1273,11 +1312,17 @@
             </div>
 
             <h3>Move Log</h3>
-            <div id="move-log" role="log" aria-live="polite" aria-atomic="false">
-                <!-- Log entries will be added by JavaScript here -->
+            <button id="copy-log-button" class="copy-button" title="Copy move log to clipboard">
+                Copy Log 📋 <!-- You can use an icon here later if you prefer -->
+            </button>
+            <div id="move-log" class="scrollable-log" aria-live="polite">
+                <!-- Log entries will be added here by JS -->
             </div>
 
             <h3>Board State</h3>
+            <button id="copy-state-button" class="copy-button" title="Copy board state hash to clipboard">
+                    Copy Board State 📋
+            </button>
             <div id="board-state-log">
                 <!-- Board state string for debugging/repetition check -->
             </div>
@@ -1462,7 +1507,9 @@
         const resetButton = document.getElementById('reset-button');
         const undoButton = document.getElementById('undo-button');
         const moveLogElement = document.getElementById('move-log');
+        const copyLogButton = document.getElementById('copy-log-button');
         const boardStateLogElement = document.getElementById('board-state-log');
+        const copyStateButton = document.getElementById('copy-state-button');
         const pieceAssetContainer = document.getElementById('piece-assets');
         const debugLogContainer = document.getElementById('debug-log-container');
         const debugLogOutput = document.getElementById('debug-log-output');
@@ -1549,6 +1596,125 @@
                 });
             }
         }
+
+        // --- Copy Log Button Logic ---
+        if (copyLogButton && moveLogElement) {
+            copyLogButton.addEventListener('click', handleCopyLogClick);
+        } else {
+            console.warn("Could not find Copy Log button or Move Log element.");
+        }
+
+        /**
+         * Handles the click event for the Copy Log button.
+         * Extracts text from the move log, formats it, and copies it to the clipboard.
+         * Provides user feedback on the button.
+         */
+        function handleCopyLogClick() {
+            const logEntries = moveLogElement.querySelectorAll('.log-entry');
+            if (logEntries.length === 0) {
+                copyLogButton.textContent = "Log Empty 📋";
+                copyLogButton.disabled = true;
+                setTimeout(() => {
+                    copyLogButton.textContent = "Copy Log 📋";
+                    copyLogButton.disabled = false;
+                }, 1500);
+                return;
+            }
+
+            // Extract text content from each entry.
+            // The non-breaking spaces should now be included correctly.
+            const logLines = Array.from(logEntries).map(entry => {
+                 // Trim potential extra whitespace around the whole line just in case
+                return entry.textContent.trim();
+            });
+            const formattedLogText = logLines.join('\n'); // Join lines with newline characters
+
+            if (!navigator.clipboard) {
+                console.error("Clipboard API not available. Cannot copy.");
+                copyLogButton.textContent = "Copy Failed";
+                // Optionally disable button permanently if API is missing
+                // copyLogButton.disabled = true;
+                setTimeout(() => { copyLogButton.textContent = "Copy Log 📋"; }, 2000);
+                return;
+            }
+
+            // Use the Clipboard API to write the text
+            navigator.clipboard.writeText(formattedLogText).then(() => {
+                // Success feedback
+                const originalText = "Copy Log 📋"; // Store original text
+                copyLogButton.textContent = "Copied! 📋";
+                copyLogButton.disabled = true; // Briefly disable
+                console.log("Move log copied to clipboard.");
+
+                // Revert button text and state after a delay
+                setTimeout(() => {
+                    copyLogButton.textContent = originalText;
+                    copyLogButton.disabled = false;
+                }, 1500); // Revert after 1.5 seconds
+
+            }).catch(err => {
+                // Error feedback
+                console.error('Failed to copy move log: ', err);
+                copyLogButton.textContent = "Copy Failed";
+                 setTimeout(() => { copyLogButton.textContent = "Copy Log"; }, 2000);
+            });
+        }
+        // --- End Copy Log Button Logic ---
+
+        // --- Copy Board State Button Logic ---
+        if (copyStateButton && boardStateLogElement) {
+            copyStateButton.addEventListener('click', handleCopyStateClick);
+        } else {
+            console.warn("Could not find Copy State button or Board State Log element.");
+        }
+
+        /**
+         * Handles the click event for the Copy State button.
+         * Extracts the board state string from its display element and copies it to the clipboard.
+         * Provides user feedback on the button.
+         */
+        function handleCopyStateClick() {
+            const stateString = boardStateLogElement.textContent; // Get text from the display element
+
+            if (!stateString || stateString.trim() === '') {
+                copyStateButton.textContent = "State Empty 📋";
+                copyStateButton.disabled = true;
+                setTimeout(() => {
+                    copyStateButton.textContent = "Copy Board State 📋";
+                    copyStateButton.disabled = false;
+                }, 1500);
+                return;
+            }
+
+            if (!navigator.clipboard) {
+                console.error("Clipboard API not available. Cannot copy.");
+                copyStateButton.textContent = "Copy Failed 📋";
+                setTimeout(() => { copyStateButton.textContent = "Copy Board State 📋"; }, 2000);
+                return;
+            }
+
+            // Use the Clipboard API to write the text
+            navigator.clipboard.writeText(stateString).then(() => {
+                // Success feedback
+                const originalText = "Copy Board State 📋"; // Store original text
+                copyStateButton.textContent = "Copied! 📋";
+                copyStateButton.disabled = true; // Briefly disable
+                console.log("Board state string copied to clipboard.");
+
+                // Revert button text and state after a delay
+                setTimeout(() => {
+                    copyStateButton.textContent = originalText;
+                    copyStateButton.disabled = false;
+                }, 1500); // Revert after 1.5 seconds
+
+            }).catch(err => {
+                // Error feedback
+                console.error('Failed to copy board state string: ', err);
+                copyStateButton.textContent = "Copy Failed 📋";
+                setTimeout(() => { copyStateButton.textContent = "Copy Board State 📋"; }, 2000);
+            });
+        }
+        // --- End Copy Board State Button Logic ---
 
         /** // NEW function to handle the first user interaction
          * Called on first click/touch/drag to enable audio context and start music.
@@ -1639,18 +1805,30 @@
             debugLogOutput.scrollTop = debugLogOutput.scrollHeight;
         }
 
-        // Override console methods to also log to the panel
+        // Override console methods to also log to the panel and suppress console output if debug is false
         console.log = function(...args) {
-            originalConsole.log.apply(console, args); // Call original console.log
-            logToPanel('log', args); // Log to panel
+            // Only call the original console.log if debug is true
+            if (debug) {
+                originalConsole.log.apply(console, args);
+            }
+            // Always attempt to log to the panel (it has its own internal debug check)
+            logToPanel('log', args);
         };
         console.warn = function(...args) {
-            originalConsole.warn.apply(console, args); // Call original console.warn
-            logToPanel('warn', args); // Log to panel
+            // Only call the original console.warn if debug is true
+            if (debug) {
+                originalConsole.warn.apply(console, args);
+            }
+            // Always attempt to log to the panel (it has its own internal debug check)
+            logToPanel('warn', args);
         };
         console.error = function(...args) {
-            originalConsole.error.apply(console, args); // Call original console.error
-            logToPanel('error', args); // Log to panel
+            // Only call the original console.error if debug is true
+            if (debug) {
+                originalConsole.error.apply(console, args);
+            }
+            // Always attempt to log to the panel (it has its own internal debug check)
+            logToPanel('error', args);
         };
 
         // Show or hide the debug panel based on the debug flag
@@ -1664,7 +1842,11 @@
         if (clearDebugLogButton && debugLogOutput) {
             clearDebugLogButton.addEventListener('click', () => {
                 debugLogOutput.innerHTML = ''; // Clear panel content
-                console.log("Debug log cleared.");
+                // Log clearing only if debug is enabled
+                if (debug) {
+                     originalConsole.log("Debug log cleared."); // Use originalConsole here directly if desired, or rely on the override
+                }
+                 logToPanel('log', ["Debug log cleared."]); // Log to panel regardless
             });
         }
         // --- END Console Override ---
@@ -1809,7 +1991,7 @@
         const AI_IS_THREATENED_PENALTY = -50;       // Penalty if AI piece can be captured next turn (SIGNIFICANTLY INCREASED)
         const AI_OPPONENT_MOBILITY_PENALTY_MULT = -0.5; // Penalty based on opponent's moves
         // --- Piece Values ---
-        const AI_PIECE_VALUES = { 1: 45, 2: 5, 3: 50, 4: 20, 5: 45, 6: 75, 7: 85, 8: 70 }; // Lion/Tiger slightly higher than Elephant
+        const AI_PIECE_VALUES = { 1: 56, 2: 32, 3: 49, 4: 36, 5: 47, 6: 70, 7: 98, 8: 75 }; // Lion/Tiger slightly higher than Elephant
 
         // --- Game State Variables ---
         let gameState = {}; // Holds current board, player, turn, etc.
@@ -5103,7 +5285,7 @@
             // Turn Number Span
             const turnSpan = document.createElement('span');
             turnSpan.classList.add('turn-number');
-            turnSpan.textContent = `${turn}.`;
+            turnSpan.textContent = `${turn}.\u00A0`; // Use Unicode non-breaking space
             logEntryDiv.appendChild(turnSpan);
 
             // Helper function to create and configure the move span
@@ -5134,7 +5316,16 @@
             };
 
             // Create and append Orange Move Span (always needed)
-            const orangeSpan = createMoveSpan(orangeMove, 'log-orange');
+            const orangeSpan = createMoveSpan(orangeMove, 'log-orange'); // Uses the local helper
+
+            // *** FIX: Add TRAILING NON-BREAKING space to orange span's text content ***
+            // Check if it's actual content and not the placeholder
+            if (orangeSpan.textContent && orangeSpan.textContent !== '...') {
+               // Append the Unicode Non-Breaking Space character
+               orangeSpan.textContent = orangeSpan.textContent + '\u00A0';
+            }
+
+            // Append the potentially modified orange span
             logEntryDiv.appendChild(orangeSpan);
 
             // Create and append Yellow Move Span ONLY if yellowMove has a value
