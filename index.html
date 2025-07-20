@@ -1564,6 +1564,22 @@
         };
         const MINIMAX_DEPTH = 3; // Depth for AI search (higher = stronger but slower)
 
+        // --- AI Evaluation Constants (Tunable) ---
+        const AI_WIN_SCORE = 10000;
+        const AI_LOSE_SCORE = -10000;
+        // --- Offensive Bonuses ---
+        const AI_ADVANCE_BONUS_MULT = 1.0;   // Bonus per row advanced (Increased)
+        const AI_NEAR_OPP_DEN_BONUS = 35;    // Bonus for AI near opponent's den (Increased)
+        const AI_MULTI_ATTACKER_BONUS = 40;  // Bonus for multiple pieces near opponent den (Increased)
+        const AI_NEAR_OPP_TRAP_BONUS = 15;   // Bonus for AI near opponent's traps (offense) (Increased)
+        const AI_MOBILITY_BONUS_MULT = 0.5;   // Bonus per valid move available to a piece (NEW)
+        // --- Defensive Penalties ---
+        const AI_IMMEDIATE_WIN_THREAT_PENALTY = -3000; // Opponent can win next turn (Still high)
+        const AI_NEAR_OWN_DEN_PENALTY = -50;         // Opponent piece near AI den (Reduced)
+        const AI_TRAP_DANGER_PENALTY = -200;        // AI piece vulnerable ON a trap (Increased slightly)
+        const AI_TRAP_ATTACK_VULNERABILITY = -150;  // AI piece vulnerable TO a trap attack (Increased slightly)
+        // --- Piece Values (Can also be tuned here) ---
+        const AI_PIECE_VALUES = { 1: 40, 2: 10, 3: 45, 4: 30, 5: 50, 6: 75, 7: 85, 8: 80 };
 
         // --- Game State Variables ---
         let gameState = {}; // Holds current board, player, turn, etc.
@@ -4293,51 +4309,33 @@
 
         /**
          * Evaluates the static board state from the perspective of the AI player (playerForMax).
-         * Incorporates heuristics for position, threats, traps, and piece values. // <-- Updated comment
+         * Incorporates heuristics for position, threats, traps, mobility, and piece values. // <-- Updated comment
+         * Uses tunable constants for easier balancing.
          * @param {object} boardState - The board state to evaluate.
          * @param {string} playerForMax - The player considered "maximizing" (AI, usually Yellow).
          * @returns {number} A numerical score representing the board state's favorability for playerForMax.
          */
-        function evaluateBoard(boardState, playerForMax) { // Task 34 Enhancement
+        function evaluateBoard(boardState, playerForMax) { // Task 34 Enhancement & Re-balance
             let score = 0;
-            const pieceValues = { 1: 40, 2: 10, 3: 45, 4: 30, 5: 50, 6: 75, 7: 85, 8: 80 }; // Adjusted values slightly (Rat/Dog maybe higher?)
             const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
 
-            // Dens and Traps relative to the player being evaluated (playerForMax)
-            const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow; // playerForMax's own den
-            const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange; // Opponent's den (target)
-            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange; // Traps near AI den
-            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow; // Traps near Opponent den
+            // Use constants defined at the top
+            const pieceValues = AI_PIECE_VALUES;
+            const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow;
+            const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange;
+            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow;
 
             const adjacentToMaxDen = getAdjacentCoords(maxDen);
-            const adjacentToMinDen = getAdjacentCoords(minDen);
-            const adjacentToMinTraps = getAdjacentCoordsSet(minTraps); // Adjacency for AI bonus near opponent traps
+            const adjacentToMinTraps = getAdjacentCoordsSet(minTraps);
 
-            // --- Evaluation Constants ---
-            const WIN_SCORE = 10000;
-            const LOSE_SCORE = -10000;
-            const IMMEDIATE_THREAT_PENALTY = -2000; // Opponent adjacent/on trap near AI den AND can move in
-            const NEAR_DEN_PENALTY = -500;        // Opponent just near AI den/traps
-            const NEAR_OPPONENT_DEN_BONUS = 15;    // Bonus for AI near opponent's den
-            const NEAR_OPPONENT_TRAP_BONUS = 10;   // Bonus for AI near opponent's traps (offense)
-            const TRAP_DANGER_PENALTY = -150;       // AI piece vulnerable ON a trap
-            const TRAP_ATTACK_VULNERABILITY = -100; // AI piece vulnerable TO a trap attack
-            const ADVANCE_BONUS_MULTIPLIER = 0.3;  // Bonus per row advanced
-            const MULTI_ATTACKER_BONUS = 25;     // Bonus for having multiple pieces near opponent den
-
-            let maxHasWon = false;
-            let minHasWon = false;
             let maxPieceCount = 0;
             let minPieceCount = 0;
-            let maxAdvancedPieces = 0; // Count pieces past midline
-            let maxPiecesNearOppDen = 0; // Count pieces in opponent's first 3 rows
+            let maxPiecesNearOppDen = 0;
 
             // --- Pre-checks for immediate win/loss ---
-            // Check if opponent is already IN AI's den
-            if (boardState[maxDen]?.player === opponent) return LOSE_SCORE;
-            // Check if AI is already IN opponent's den
-            if (boardState[minDen]?.player === playerForMax) return WIN_SCORE;
-
+            if (boardState[maxDen]?.player === opponent) return AI_LOSE_SCORE;
+            if (boardState[minDen]?.player === playerForMax) return AI_WIN_SCORE;
 
             // --- Iterate through pieces ---
             for (const coords in boardState) {
@@ -4345,27 +4343,31 @@
                 if (!piece) continue;
 
                 const rc = getRowCol(coords);
-                if (!rc) continue; // Should not happen
+                if (!rc) continue;
 
                 let pieceScore = pieceValues[piece.rank] || 0;
                 const pieceAbilities = SPECIAL_ABILITIES[piece.rank] || {};
+                // Calculate mobility bonus for this piece
+                const pieceMoves = getAllValidMoves(boardState, piece.player, true); // Simulate check for mobility
+                const mobilityBonus = pieceMoves.filter(m => m.from === coords).length * AI_MOBILITY_BONUS_MULT;
+
 
                 if (piece.player === playerForMax) { // AI's piece (Maximizing)
                     maxPieceCount++;
                     score += pieceScore;
+                    score += mobilityBonus; // Add mobility bonus
 
                     // 1. Positional Bonus: Advancing towards opponent den
-                    const targetDenRow = getRowCol(minDen).row; // 0 for Yellow, 8 for Orange
-                    const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (rc.row) : (ROWS - 1 - rc.row); // Yellow wants lower row index, Orange wants higher
-                    score += rowsAdvanced * ADVANCE_BONUS_MULTIPLIER;
-                    if (rowsAdvanced > (ROWS / 2)) maxAdvancedPieces++;
-                     // Count pieces near opponent den (e.g., last 3 rows)
-                     const nearThreshold = playerForMax === PLAYERS.YELLOW ? 2 : 6; // Rows 0,1,2 for Yellow; Rows 8,7,6 for Orange
+                    const targetDenRow = getRowCol(minDen).row;
+                    const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (rc.row) : (ROWS - 1 - rc.row);
+                    score += rowsAdvanced * AI_ADVANCE_BONUS_MULT; // Use Constant
+
+                     // Count/Bonus for pieces near opponent den (e.g., last 3 rows)
+                     const nearThreshold = playerForMax === PLAYERS.YELLOW ? 2 : 6;
                      if ((playerForMax === PLAYERS.YELLOW && rc.row <= nearThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= nearThreshold)) {
                         maxPiecesNearOppDen++;
-                        score += NEAR_OPPONENT_DEN_BONUS; // Add bonus for being close
+                        score += AI_NEAR_OPP_DEN_BONUS; // Use Constant
                     }
-
 
                     // 2. Trap Safety/Danger for AI piece
                     if (isOnTrapSquare(coords)) {
@@ -4373,78 +4375,71 @@
                          const adjacent = getAdjacentCoords(coords);
                          for(const adjCoord of adjacent) {
                             const adjPiece = boardState[adjCoord];
-                            if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) { // Opponent can move onto AI's trap square
-                                score += TRAP_DANGER_PENALTY; // Penalty for being vulnerable on trap
-                                break; // Apply penalty once per piece
+                            // Opponent exists, is adjacent, and move onto trap is valid
+                            if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) {
+                                score += AI_TRAP_DANGER_PENALTY; // Use Constant
+                                break;
                             }
                          }
                     } else {
-                        // AI is NOT on a trap. Check if adjacent opponent could capture it by moving onto an adjacent *trap*.
+                        // AI is NOT on a trap. Check vulnerability TO a trap attack.
                          const adjacent = getAdjacentCoords(coords);
                          for(const adjCoord of adjacent) {
                             const adjPiece = boardState[adjCoord];
-                            // Is opponent adjacent?
                             if(adjPiece?.player === opponent) {
-                                // Can opponent attack AI piece? (Check standard capture first)
-                                // Now, check if opponent could move to an *adjacent trap* and capture AI piece from there
                                 const trapsNearOpponent = getAdjacentCoords(adjCoord).filter(c => isOnTrapSquare(c));
                                 for (const trapCoord of trapsNearOpponent) {
-                                    // Can opponent move to this trap AND would that trap move allow capture of AI piece?
-                                    // Note: Attacker rank is NOT reduced when attacking FROM trap
                                     if (trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
-                                        // Opponent can move to the trap. Now, can they attack AI from there?
-                                        // Check rank comparison directly (attacker rank vs AI piece rank)
-                                        if(adjPiece.rank >= piece.rank || (adjPiece.rank === 1 && piece.rank === 8 && !WATER_SQUARES.has(trapCoord))) { // Rat exception only from land trap
-                                            score += TRAP_ATTACK_VULNERABILITY;
-                                            break; // Apply penalty once
+                                        const canCaptureFromTrap = adjPiece.rank >= piece.rank || (adjPiece.rank === 1 && piece.rank === 8 && !WATER_SQUARES.has(trapCoord));
+                                        if(canCaptureFromTrap) {
+                                            score += AI_TRAP_ATTACK_VULNERABILITY; // Use Constant
+                                            break; // Apply penalty once per opponent piece
                                         }
                                     }
                                 }
                             }
-                            if (score < 0) break; // Stop checking if penalty applied
+                            if(score < 0 && score <= AI_TRAP_ATTACK_VULNERABILITY) break; // Exit inner loop if penalty applied
                          }
                     }
 
                     // 3. Bonus for being near opponent's traps (offense)
                     if (adjacentToMinTraps.has(coords)) {
-                         score += NEAR_OPPONENT_TRAP_BONUS;
+                         score += AI_NEAR_OPP_TRAP_BONUS; // Use Constant
                     }
 
 
                 } else { // Opponent's piece (Minimizing)
                     minPieceCount++;
                     score -= pieceScore;
+                    score -= mobilityBonus; // Subtract opponent's mobility bonus
 
                     // 1. Immediate Threat Penalty
                     const isOnMaxTrap = maxTraps.has(coords);
                     const isAdjacentToMaxDen = adjacentToMaxDen.includes(coords);
 
                     if (isAdjacentToMaxDen || isOnMaxTrap) {
-                        score += NEAR_DEN_PENALTY; // General penalty for being close
+                        score += AI_NEAR_OWN_DEN_PENALTY; // Use Constant (General proximity penalty)
                         // Check if opponent can ACTUALLY enter den next turn
                          if (isValidMove(coords, maxDen, piece, boardState, true).valid && !piece.isHungry) {
-                             score += IMMEDIATE_THREAT_PENALTY; // High penalty if can win NOW
+                             score += AI_IMMEDIATE_WIN_THREAT_PENALTY; // Use Constant (Actual win threat)
                          }
                     }
-
-                    // 2. Penalty for opponent controlling squares near AI's traps (defense)
-                     const adjacentToMaxTraps = getAdjacentCoordsSet(maxTraps);
-                    if (adjacentToMaxTraps.has(coords)) {
-                         score -= 5; // Small penalty for opponent near AI traps
-                    }
-
+                    // No extra penalty for opponent near AI traps - covered by NEAR_OWN_DEN
                 }
             }
 
             // --- Post-Iteration Checks ---
             // Win/Loss by Elimination
-            if (minPieceCount === 0) return WIN_SCORE;
-            if (maxPieceCount === 0) return LOSE_SCORE; // Should have been caught by piece check, but safety
+            if (minPieceCount === 0) return AI_WIN_SCORE;
+            if (maxPieceCount === 0) return AI_LOSE_SCORE;
 
              // Bonus for multiple attackers near opponent den
              if (maxPiecesNearOppDen >= 2) {
-                 score += MULTI_ATTACKER_BONUS * maxPiecesNearOppDen; // Scale bonus slightly
+                 score += AI_MULTI_ATTACKER_BONUS * maxPiecesNearOppDen; // Use Constant
              }
+
+            // Add a small random factor to break ties between equally scored states
+            score += (Math.random() - 0.5) * 0.1; // Very small random nudge
 
             return score; // Return final calculated score
         }
