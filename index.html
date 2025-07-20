@@ -3991,7 +3991,7 @@
 
         /**
          * Main AI decision function. Implements prioritized checks, dynamic depth, and falls back to Minimax.
-         * Uses static evaluation for choosing counter-moves.
+         * Uses a shallow Minimax search for choosing counter-moves in Priority 2. // <-- Updated comment
          */
         function triggerAIMove() {
             console.log("AI (Yellow) is thinking...");
@@ -4000,49 +4000,55 @@
 
             // --- Calculate Dynamic Depth ---
             const totalPieces = Object.keys(gameState.board).length;
-            let currentDepth = MINIMAX_DEPTH;
-            if (totalPieces > 12) currentDepth = 2;
-            else if (totalPieces > 8) currentDepth = 3;
-            else currentDepth = Math.max(MINIMAX_DEPTH, 4);
+            let currentDepth = MINIMAX_DEPTH; // Base depth
+            // Adjust depth based on piece count (simplified example)
+            if (totalPieces > 12) currentDepth = Math.max(1, MINIMAX_DEPTH - 1); // Shallower in early game
+            else if (totalPieces <= 8) currentDepth = MINIMAX_DEPTH + 1; // Deeper in late game
             console.log(`AI using search depth: ${currentDepth} (Total Pieces: ${totalPieces})`);
 
             // 1. Get all valid moves for AI
             let allMyMoves = [];
             try { // Safety wrap
-                 allMyMoves = getAllValidMoves(gameState.board, player, false);
-            } catch(e) {
+                allMyMoves = getAllValidMoves(gameState.board, player, false); // isSimulation = false for actual moves
+            } catch (e) {
                 console.error("triggerAIMove Error getting initial moves:", e);
-                 // Handle lack of moves later
+                // Handle lack of moves later
             }
 
             if (allMyMoves.length === 0) {
                 console.log("AI has no valid moves! Checking game end conditions.");
                 if (!gameState.gameOver) {
+                    // Check if stalemate (loss for AI) or some error
                     if (checkForStalemate(player)) {
-                        gameState.winner = null; gameState.gameOver = true;
-                        updateStatus("Stalemate! AI (Yellow) has no valid moves.");
+                        // If AI has no moves and it's its turn, it's a loss (opponent wins)
+                        gameState.winner = PLAYERS.ORANGE; // Opponent wins
+                        gameState.gameOver = true;
+                        updateStatus(`Stalemate! AI (Yellow) has no valid moves. Orange wins!`);
                         pauseAllClocks();
                     } else {
-                        gameState.winner = PLAYERS.ORANGE; gameState.gameOver = true;
+                        // Should not happen if getAllValidMoves is correct, but handle as loss
+                        gameState.winner = PLAYERS.ORANGE;
+                        gameState.gameOver = true;
                         updateStatus("AI Error or No Moves Found! Orange wins!");
                         pauseAllClocks();
                     }
                     disablePlayerInteraction(); updateUI(); updateUndoButtonState();
                 }
-                return;
+                return; // No moves to make
             }
 
             // --- Priority 1: Can AI win immediately? ---
             let winningMove = null;
             try { // Safety wrap
-                 winningMove = findImmediateWinningMove(gameState.board, player, false);
-             } catch(e) {
-                  console.error("triggerAIMove Error checking for winning move:", e);
-             }
+                // Pass isSimulation=false for logging checks
+                winningMove = findImmediateWinningMove(gameState.board, player, false);
+            } catch (e) {
+                console.error("triggerAIMove Error checking for winning move:", e);
+            }
 
             if (winningMove) {
                 const aiEndTime = performance.now();
-                console.log(`AI Priority 1: Found winning move ${winningMove.from} -> ${winningMove.to}. Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
+                console.log(`AI Priority 1: Found winning move ${winningMove.from} -> ${winningMove.to}. Time: ${((aiEndTime - aiStartTime) / 1000).toFixed(2)}s`);
                 performMove(winningMove.from, winningMove.to);
                 return;
             }
@@ -4052,109 +4058,121 @@
             try { // Safety wrap
                 opponentWinningMoves = getOpponentWinningMoves(gameState.board, player);
             } catch (e) {
-                 console.error("triggerAIMove Error checking opponent winning moves:", e);
+                console.error("triggerAIMove Error checking opponent winning moves:", e);
             }
 
             if (opponentWinningMoves.length > 0) {
                 console.log(`AI Priority 2: Opponent has potential winning move(s):`, opponentWinningMoves);
                 let counterMoves = [];
-                 try { // Safety wrap
-                     counterMoves = findCounterMoves(gameState, allMyMoves, opponentWinningMoves);
-                 } catch(e) {
-                      console.error("triggerAIMove Error finding counter moves:", e);
-                 }
-
+                try { // Safety wrap
+                    counterMoves = findCounterMoves(gameState, allMyMoves, opponentWinningMoves);
+                } catch (e) {
+                    console.error("triggerAIMove Error finding counter moves:", e);
+                }
 
                 if (counterMoves.length > 0) {
                     console.log(`AI Priority 2: Found counter-move(s):`, counterMoves);
-                    // --- Use static evaluateBoard to choose BEST counter ---
+                    // --- Use SHALLOW MINIMAX to choose BEST counter ---
                     let bestCounterMove = null;
                     let bestCounterScore = -Infinity;
+                    const SHALLOW_DEPTH = 1; // Use depth 1 for quick tactical check
+
+                    console.log(`AI Priority 2: Evaluating ${counterMoves.length} counter(s) with Minimax (Depth ${SHALLOW_DEPTH})...`);
                     for (const counter of counterMoves) {
-                         // --- Safety Check ---
-                         if (!counter || !counter.from || !counter.to) continue;
-                         try { // Wrap simulation and evaluation
-                             const simResult = simulateMove(gameState, counter);
-                             if (!simResult || !simResult.nextState || !simResult.nextState.board) {
+                        // --- Safety Check ---
+                        if (!counter || !counter.from || !counter.to) continue;
+                        let score = -Infinity; // Default score if simulation/minimax fails
+                        try { // Wrap simulation and minimax call
+                            const simResult = simulateMove(gameState, counter);
+                            if (!simResult || !simResult.nextState || !simResult.nextState.board) {
                                 console.error(`[AI Priority 2 Error] Simulation failed for counter move ${counter.from}->${counter.to}`);
                                 continue; // Skip this counter move if simulation failed
+                            }
+                            const { nextState: simulatedStateAfterCounter } = simResult;
+
+                            // Call minimax for the opponent's turn after the counter move is made
+                            score = minimax(SHALLOW_DEPTH, simulatedStateAfterCounter, false, -Infinity, Infinity, player);
+                             console.log(`[AI P2 Eval] Counter ${counter.from}->${counter.to}: Shallow Minimax Score = ${score.toFixed(2)}`);
+
+                            // Add slight randomness for tie-breaking among counters
+                             if (score !== Infinity && score !== -Infinity && Math.abs(score) < AI_WIN_SCORE / 1.1) {
+                                 score += (Math.random() - 0.5) * 0.01; // Smaller nudge
                              }
-                             const { nextState: simulatedStateAfterCounter, moveInfo: counterMoveInfo } = simResult;
-                             const score = evaluateBoard(simulatedStateAfterCounter.board, player, counterMoveInfo); // <--- CORRECTED CALL
-                             if (score > bestCounterScore) {
-                                 bestCounterScore = score;
-                                 bestCounterMove = counter;
-                             }
-                         } catch (e) {
-                              console.error(`[AI Priority 2 Error] Evaluating counter ${counter.from}->${counter.to}:`, e);
-                         }
+
+
+                            if (score > bestCounterScore) {
+                                bestCounterScore = score;
+                                bestCounterMove = counter;
+                            }
+                        } catch (e) {
+                            console.error(`[AI Priority 2 Error] Evaluating counter ${counter.from}->${counter.to} with shallow minimax:`, e);
+                        }
                     } // End counter move loop
 
                     // --- Safety check if no best counter move could be evaluated ---
                     if (!bestCounterMove && counterMoves.length > 0) { // If evaluation failed for all, pick first valid counter
-                         console.warn("AI Priority 2: Failed to evaluate any counter moves successfully. Picking first valid counter.");
-                         bestCounterMove = counterMoves.find(m => m); // Find first valid move object
-                         bestCounterScore = -Infinity; // Indicate it wasn't properly scored
+                        console.warn("AI Priority 2: Failed to evaluate any counter moves with shallow minimax. Picking first valid counter.");
+                        bestCounterMove = counterMoves.find(m => m); // Find first valid move object
+                        bestCounterScore = -Infinity; // Indicate it wasn't properly scored
                     }
 
                     if (bestCounterMove) { // Check if we have a move to make
                         const aiEndTime = performance.now();
-                        console.log(`AI Priority 2: Choosing best counter ${bestCounterMove.from} -> ${bestCounterMove.to} (Static Eval Score: ${bestCounterScore.toFixed(2)}). Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
+                        console.log(`AI Priority 2: Choosing best counter ${bestCounterMove.from} -> ${bestCounterMove.to} (Shallow Minimax Score: ${bestCounterScore.toFixed(2)}). Time: ${((aiEndTime - aiStartTime) / 1000).toFixed(2)}s`);
                         performMove(bestCounterMove.from, bestCounterMove.to);
                         return; // Counter move made, exit AI turn
                     } else {
-                         console.warn("AI Priority 2: No valid counter move selected despite finding possibilities. Falling back to Minimax.");
+                        console.warn("AI Priority 2: No valid counter move selected despite finding possibilities. Falling back to full Minimax.");
+                        // Fall through to full Minimax search
                     }
 
                 } else {
-                    console.log(`AI Priority 2: Cannot stop all opponent winning moves! Making default best move.`);
-                    // Fall through to Minimax
+                    // No single move blocks all threats
+                    console.log(`AI Priority 2: Cannot stop all opponent winning moves with one move! Making default best move (via full Minimax).`);
+                    // Fall through to full Minimax search to find the 'least bad' option
                 }
             } // End of Priority 2 Check
 
-            // --- Fallback: Use Minimax with dynamic depth ---
+            // --- Fallback: Use Full Minimax with dynamic depth ---
             console.log(`AI Fallback: Running Minimax (Depth: ${currentDepth})...`);
             let bestMoveResult = null;
             try { // Safety wrap minimax call
                 bestMoveResult = findBestMoveMinimax(currentDepth, gameState, player);
             } catch (e) {
-                 console.error("triggerAIMove Error during Minimax call:", e);
+                console.error("triggerAIMove Error during Minimax call:", e);
             }
-
 
             if (bestMoveResult?.move) {
-                 const aiEndTime = performance.now();
-                console.log(`AI Fallback: Chose move ${bestMoveResult.move.from} -> ${bestMoveResult.move.to} (Score: ${bestMoveResult.score.toFixed(2)} @Depth ${currentDepth}). Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s`);
+                const aiEndTime = performance.now();
+                console.log(`AI Fallback: Chose move ${bestMoveResult.move.from} -> ${bestMoveResult.move.to} (Score: ${bestMoveResult.score.toFixed(2)} @Depth ${currentDepth}). Time: ${((aiEndTime - aiStartTime) / 1000).toFixed(2)}s`);
                 performMove(bestMoveResult.move.from, bestMoveResult.move.to);
             } else {
-                 // Fallback if minimax itself fails or returns nothing
-                 const aiEndTime = performance.now();
-                 console.error(`AI ERROR: Minimax failed to return a valid move. Time: ${((aiEndTime - aiStartTime)/1000).toFixed(2)}s. Choosing random.`);
-                 const fallbackSet = allMyMoves.filter(m=>m); // Ensure only valid moves
-                 if (fallbackSet.length > 0) {
-                     const randomMove = fallbackSet[Math.floor(Math.random() * fallbackSet.length)];
-                     performMove(randomMove.from, randomMove.to);
-                 } else {
-                      console.error("AI CRITICAL ERROR: No moves available even for random fallback!");
-                      // Handle complete inability to move - perhaps end game?
-                 }
+                // Fallback if minimax itself fails or returns nothing
+                const aiEndTime = performance.now();
+                console.error(`AI ERROR: Minimax failed to return a valid move. Time: ${((aiEndTime - aiStartTime) / 1000).toFixed(2)}s. Choosing random from all valid moves.`);
+                // Use the initial set of all valid moves for fallback
+                const fallbackSet = allMyMoves.filter(m => m); // Ensure only valid moves
+                if (fallbackSet.length > 0) {
+                    const randomMove = fallbackSet[Math.floor(Math.random() * fallbackSet.length)];
+                    performMove(randomMove.from, randomMove.to);
+                } else {
+                    console.error("AI CRITICAL ERROR: No moves available even for random fallback (should have been caught earlier)!");
+                    // Game should have ended in the initial check if allMyMoves was empty.
+                }
             }
-        } // End triggerAIMove
+        }
 
         /**
          * Finds the best move for the AI using the Minimax algorithm at the root level.
-         * Considers hungry piece obligations. PRIORITIZES den-adjacent moves ONLY
-         * if their Minimax score remains very high (indicating safety). // <-- Updated comment
+         * Considers hungry piece obligations. Relies on Minimax evaluation guided by evaluateBoard. // <-- Updated comment
          * @param {number} depth - The maximum search depth for Minimax.
          * @param {object} currentGameState - The current state of the game.
          * @param {string} playerForMax - The player the AI is playing as (always YELLOW here).
          * @returns {{move: object, score: number}|null} The best move found ({from, to}) and its score, or null if no moves.
          */
-        function findBestMoveMinimax(depth, currentGameState, playerForMax) { // Task 40 - Fix Near-Win Priority
-            let bestScore = -Infinity;          // Tracks the best score found by standard minimax search
-            let bestMove = null;              // Tracks the move corresponding to bestScore
-            let bestDenAdjacentMove = null;   // Tracks the best viable move landing adjacent to opponent den
-            let bestDenAdjacentMinimaxScore = -Infinity; // Tracks the minimax score of bestDenAdjacentMove
+        function findBestMoveMinimax(depth, currentGameState, playerForMax) { // REMOVED Den Adjacent Priority Logic
+            let bestScore = -Infinity; // Tracks the best score found by standard minimax search
+            let bestMove = null; // Tracks the move corresponding to bestScore
 
             // --- Safety check ---
             if (!currentGameState || !currentGameState.board) {
@@ -4163,16 +4181,14 @@
             }
 
             let possibleMoves = [];
-             try { // Safety wrap
-                possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer, true);
-             } catch(e) {
-                 console.error("findBestMoveMinimax Error getting possible moves:", e);
-                 return null; // Cannot proceed without moves
-             }
+            try { // Safety wrap
+                possibleMoves = getAllValidMoves(currentGameState.board, currentGameState.currentPlayer, true); // isSimulation = true
+            } catch (e) {
+                console.error("findBestMoveMinimax Error getting possible moves:", e);
+                return null; // Cannot proceed without moves
+            }
 
             const opponentDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
-            // Pre-calculate squares adjacent to opponent den
-            const adjacentToOpponentDen = getAdjacentCoords(opponentDen);
 
             if (possibleMoves.length === 0) {
                 console.log("AI findBestMove: No possible moves found.");
@@ -4184,35 +4200,41 @@
                 // --- Safety Check ---
                 if (!move || !move.from || !move.to) continue;
                 if (move.to === opponentDen) {
-                    // --- Safety Check ---
-                    if (currentGameState.board[move.from] && !currentGameState.board[move.from].isHungry) {
-                         console.log("AI Found immediate winning move to Den:", move);
-                         return { move: move, score: AI_WIN_SCORE + depth };
-                     }
+                    // --- Safety Check --- Check if piece exists and is not hungry
+                    const movingPiece = currentGameState.board[move.from];
+                    if (movingPiece && !movingPiece.isHungry) {
+                        console.log("AI Found immediate winning move to Den:", move);
+                        return { move: move, score: AI_WIN_SCORE + depth }; // Return immediately
+                    }
                 }
             }
 
             // --- Handle Hungry Pieces Obligation ---
             let movesToConsider = possibleMoves;
             try { // Safety wrap
-                const hungryMoves = possibleMoves.filter(move => move && currentGameState.board[move.from]?.isHungry); // Add move check
+                // Filter valid moves that start from a hungry piece
+                const hungryMoves = possibleMoves.filter(move => move && currentGameState.board[move.from]?.isHungry);
                 console.log(`[findBestMove] Initial possible moves: ${possibleMoves.map(m => m ? m.from + '->' + m.to : 'INVALID').join(', ')}`);
+
                 if (hungryMoves.length > 0) {
-                    const attackingHungryMoves = hungryMoves.filter(move => move && !!currentGameState.board[move.to]); // Add move check
+                    // Further filter hungry moves to those that are attacks
+                    const attackingHungryMoves = hungryMoves.filter(move => move && !!currentGameState.board[move.to]); // Check if target square has a piece
+
                     if (attackingHungryMoves.length > 0) {
+                        // If there are attacking moves by hungry pieces, prioritize those
                         console.log("AI considering only ATTACKING moves by hungry pieces:", attackingHungryMoves);
                         movesToConsider = attackingHungryMoves;
                     } else {
+                        // If no attacking moves, but hungry pieces exist, consider any move by a hungry piece
                         console.log("AI considering only non-attacking moves by hungry pieces:", hungryMoves);
                         movesToConsider = hungryMoves;
                     }
                 }
-                 console.log(`[findBestMove] Moves considered after hunger filter: ${movesToConsider.map(m => m ? m.from + '->' + m.to : 'INVALID').join(', ')}`);
+                console.log(`[findBestMove] Moves considered after hunger filter: ${movesToConsider.map(m => m ? m.from + '->' + m.to : 'INVALID').join(', ')}`);
             } catch (e) {
                 console.error("findBestMoveMinimax Error during hungry check:", e);
-                movesToConsider = possibleMoves; // Fallback
+                movesToConsider = possibleMoves; // Fallback to all possible moves if error
             }
-
 
             // --- Evaluate Moves using Minimax ---
             for (const move of movesToConsider) {
@@ -4223,22 +4245,17 @@
                 };
 
                 let score = -Infinity; // Default score if simulation/minimax fails
-                let staticEvalScore = -Infinity; // Used only for the den-adjacent check now
                 let simResult = null;
 
                 try { // Wrap simulation and minimax call
                     simResult = simulateMove(currentGameState, move);
                     if (!simResult || !simResult.nextState || !simResult.nextState.board) {
-                         console.error(`[findBestMoveMinimax] Simulation failed for move ${move.from}->${move.to}`);
-                         continue; // Skip this move
+                        console.error(`[findBestMoveMinimax] Simulation failed for move ${move.from}->${move.to}`);
+                        continue; // Skip this move
                     }
-                    const { nextState, moveInfo } = simResult;
+                    const { nextState } = simResult; // moveInfo not needed here
 
-                    // Get static score primarily for the den-adjacent check
-                    // staticEvalScore = evaluateBoard(nextState.board, playerForMax, moveInfo); // Don't strictly need static score here anymore
-                    // console.log(`[findBestMove DEBUG] Move ${move.from}->${move.to}: Static Eval Score = ${staticEvalScore.toFixed(2)}`);
-
-                    // Run Minimax
+                    // Run Minimax for the opponent's turn
                     score = minimax(depth - 1, nextState, false, -Infinity, Infinity, playerForMax);
                     console.log(`[findBestMove DEBUG] Move ${move.from}->${move.to}: Minimax Score (Depth ${depth}) = ${score.toFixed(2)}`);
 
@@ -4247,66 +4264,44 @@
                     continue; // Skip this move on error
                 }
 
-
-                // --- Check if this move lands ADJACENT to the opponent den ---
-                const isDenAdjacentTarget = adjacentToOpponentDen.includes(move.to);
-                if (isDenAdjacentTarget) {
-                    // *** STRICTER CHECK: Only prioritize if Minimax score is still VERY HIGH ***
-                    const viableDenAdjacentThreshold = AI_WIN_SCORE / 2; // Needs a high score after lookahead
-
-                    if (score >= viableDenAdjacentThreshold) {
-                        // Is this high-scoring den-adjacent move better than the previous best one?
-                        if (bestDenAdjacentMove === null || score > bestDenAdjacentMinimaxScore) {
-                             console.log(`[findBestMove DEBUG] *** Storing HIGH-SCORING Den-Adjacent Move: ${move.from}->${move.to} (Minimax: ${score.toFixed(2)}) ***`);
-                            bestDenAdjacentMove = move;
-                            bestDenAdjacentMinimaxScore = score;
-                        }
-                    } else {
-                        console.log(`[findBestMove DEBUG] Den-Adjacent Move ${move.from}->${move.to} not prioritized (Minimax score ${score.toFixed(2)} too low).`);
-                    }
-                }
-                // --- End Den-Adjacent Check ---
-
-
                 // --- Standard Best Move Update (using Minimax score) ---
-                // Add randomness *before* comparing to bestScore
+                // Add randomness *before* comparing to bestScore to break ties
                 let currentScore = score;
-                if (score !== Infinity && score !== -Infinity && Math.abs(score) < AI_WIN_SCORE / 1.1 && Math.abs(score) < Math.abs(AI_LOSE_SCORE) / 1.1 ) {
-                    currentScore += (Math.random() - 0.5) * 0.1;
+                // Add random nudge only to non-terminal/non-critical scores
+                if (score !== Infinity && score !== -Infinity && Math.abs(score) < AI_WIN_SCORE / 1.1 && Math.abs(score) < Math.abs(AI_LOSE_SCORE) / 1.1) {
+                    currentScore += (Math.random() - 0.5) * 0.1; // Small random nudge +/- 0.05
                 }
+
                 // Update best overall move found so far
                 if (currentScore > bestScore) {
-                     console.log(`[findBestMove DEBUG] --- New Best Standard Move: ${move.from}->${move.to} (Score: ${currentScore.toFixed(2)} > Best: ${bestScore.toFixed(2)}) ---`);
+                    console.log(`[findBestMove DEBUG] --- New Best Standard Move: ${move.from}->${move.to} (Score: ${currentScore.toFixed(2)} > Best: ${bestScore.toFixed(2)}) ---`);
                     bestScore = currentScore; // Use the potentially randomized score for comparison
-                    bestMove = move;          // But store the actual move
+                    bestMove = move; // But store the actual move
                 }
             } // End loop through movesToConsider
 
-            // --- Final Decision: Prioritize viable den-adjacent move if found ---
-            if (bestDenAdjacentMove) {
-                 console.log(`[findBestMove] FINAL DECISION: Prioritizing Viable Den-Adjacent Move ${bestDenAdjacentMove.from}->${bestDenAdjacentMove.to}`);
-                 // Return the best den-adjacent move found and its actual (non-randomized) minimax score
-                 return { move: bestDenAdjacentMove, score: bestDenAdjacentMinimaxScore };
-            }
-
-            // --- Otherwise, use the best move found via standard Minimax ---
+            // --- Final Decision: Use the best move found via standard Minimax ---
             if (bestMove) {
-                 console.log(`[findBestMove] FINAL DECISION: Using Standard Best Move ${bestMove.from}->${bestMove.to}`);
-                 // Return the best standard move found and its potentially randomized score
-                 return { move: bestMove, score: bestScore };
+                console.log(`[findBestMove] FINAL DECISION: Using Standard Best Move ${bestMove.from}->${bestMove.to}`);
+                // Return the best standard move found and its potentially randomized score used for comparison
+                return { move: bestMove, score: bestScore };
             }
 
             // --- Fallback if somehow no move was selected ---
-             console.warn("Minimax didn't find ANY viable best move. Picking random valid move as fallback.");
-             const fallbackSet = movesToConsider.length > 0 ? movesToConsider.filter(m=>m) : possibleMoves.filter(m=>m); // Filter out invalid moves
-             if (fallbackSet.length > 0) {
-                 bestMove = fallbackSet[Math.floor(Math.random() * fallbackSet.length)];
-                 bestScore = -Infinity;
-                 return { move: bestMove, score: bestScore };
-             } else {
-                  console.error("AI findBestMove: No valid moves left even for fallback!");
-                  return null; // Truly no moves
-             }
+            console.warn("Minimax didn't find ANY viable best move among considered moves. Trying random valid move.");
+            // Use the originally determined `movesToConsider` or fall back further to `possibleMoves`
+            const fallbackSet = movesToConsider.length > 0 ? movesToConsider.filter(m => m) : possibleMoves.filter(m => m); // Filter out invalid moves just in case
+
+            if (fallbackSet.length > 0) {
+                bestMove = fallbackSet[Math.floor(Math.random() * fallbackSet.length)];
+                bestScore = -Infinity; // Indicate fallback score
+                console.log(`[findBestMove] Fallback: Choosing random move ${bestMove.from}->${bestMove.to}`);
+                return { move: bestMove, score: bestScore };
+            } else {
+                // This should ideally be caught earlier, but is a final safety net
+                console.error("AI findBestMove: No valid moves left even for fallback!");
+                return null; // Truly no moves
+            }
         }
 
         /**
@@ -4615,292 +4610,349 @@
             return { nextState, moveInfo }; // Return both the new state and info about the move
         }
 
+/**
+         * Calculates a bonus based on proximity to the opponent's den.
+         * @param {string} coords - The coordinates of the AI piece.
+         * @param {string} playerForMax - The AI player ('orange' or 'yellow').
+         * @param {object} boardState - The current board state (needed for win check).
+         * @returns {number} The calculated den pressure bonus.
+         */
+        function calculateDenPressureBonus(coords, playerForMax, boardState) {
+            const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
+            const piece = boardState[coords]; // Get piece data for win check
+            if (!piece) return 0;
+
+            const adjacentToMinDen = getAdjacentCoords(minDen);
+
+            // Check 1 square away
+            if (adjacentToMinDen.includes(coords)) {
+                let bonus = AI_DEN_PROXIMITY_BONUS_SQ; // Use the constant for 1 square away
+                // Check if can win next turn (and not hungry)
+                if (!piece.isHungry && isValidMove(coords, minDen, piece, boardState, true).valid) {
+                    bonus += AI_WIN_SCORE / AI_WIN_ADJACENT_BONUS_FACTOR; // Massive bonus if win is possible next turn
+                }
+                return bonus;
+            }
+
+            // Check 2 squares away (more efficient check)
+            // Create a Set of squares adjacent to the squares adjacent to the den
+            const twoSquaresFromMinDenSet = new Set();
+            adjacentToMinDen.forEach(sq1 => {
+                getAdjacentCoords(sq1).forEach(sq2 => {
+                     // Add if it's a valid coordinate, not the den itself, and not already adjacent
+                    if (sq2 && sq2 !== minDen && !adjacentToMinDen.includes(sq2)) {
+                        twoSquaresFromMinDenSet.add(sq2);
+                    }
+                });
+            });
+            // Check if the current coords is in this set
+            if (twoSquaresFromMinDenSet.has(coords)) {
+                return AI_DEN_PROXIMITY_BONUS_2SQ; // Use constant for 2 squares away
+            }
+
+            // Optional: Check 3 squares away could be added here if desired
+
+            return 0; // No bonus if further away
+        }
+
         /**
          * Evaluates the static board state from the perspective of the AI player (playerForMax).
-         * Incorporates heuristics favoring specific piece roles, den proximity, captures,
-         * penalizing Wolf/Cat advancement, and penalizing states where hunger forces
-         * a capture onto a guarded trap. // <-- Updated comment
-         * Includes safety checks and STRONGLY penalizes landing on guarded traps.
-         * Uses tunable constants for easier balancing.
+         * Simplified heuristics focusing on Material, Safety (Den/Threats/Traps), Activity (Advancement),
+         * and specific piece roles (Wolf/Cat penalty, Water Control, Jumper Blocking).
+         * Removed internal mobility calculations for performance.
+         * Uses tunable constants. Includes safety checks.
          * @param {object} boardState - The board state to evaluate.
          * @param {string} playerForMax - The player considered "maximizing" (AI, usually Yellow).
-         * @param {object|null} [originalPieceIfMove=null] - If evaluating *after* a move (Can be removed if not needed). // PARAM MAY BE REMOVED
+         * @param {object|null} [originalPieceIfMove=null] - Deprecated: Info about the move leading to this state (Not used in this version).
          * @returns {number} A numerical score representing the board state's favorability for playerForMax.
          */
-        function evaluateBoard(boardState, playerForMax, originalPieceIfMove = null) { // Task 42 - Direct Penalty for Forced Suicide
+        function evaluateBoard(boardState, playerForMax, originalPieceIfMove = null) { // Simplified Heuristics, Removed Mobility Calc
             let score = 0;
             // --- Safety Check: Ensure boardState is valid ---
             if (!boardState || typeof boardState !== 'object') {
                 console.error("[Eval Error] Invalid boardState provided:", boardState);
-                return playerForMax === PLAYERS.YELLOW ? AI_LOSE_SCORE : AI_WIN_SCORE;
+                return playerForMax === PLAYERS.YELLOW ? AI_LOSE_SCORE : AI_WIN_SCORE; // Return worst possible score
             }
 
             const opponent = playerForMax === PLAYERS.ORANGE ? PLAYERS.YELLOW : PLAYERS.ORANGE;
             const totalPieces = Object.keys(boardState).length;
-            const isEarlyGame = totalPieces > 12;
-            const isMidGame = totalPieces > 8 && totalPieces <= 12;
+            const isEarlyGame = totalPieces > 12; // Example threshold
+            const isMidGame = totalPieces > 8 && totalPieces <= 12; // Example threshold
 
-            // Use constants
+            // Use constants (Ensure these are defined globally)
             const pieceValues = AI_PIECE_VALUES;
             const maxDen = playerForMax === PLAYERS.ORANGE ? DENS.orange : DENS.yellow;
             const minDen = playerForMax === PLAYERS.ORANGE ? DENS.yellow : DENS.orange;
-            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange;
-            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow;
+            const maxTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.yellow : TRAPS.orange; // Traps near AI den
+            const minTraps = playerForMax === PLAYERS.ORANGE ? TRAPS.orange : TRAPS.yellow; // Traps near Opponent den
 
-            const adjacentToMaxDen = getAdjacentCoords(maxDen);
-            const adjacentToMinDen = getAdjacentCoords(minDen);
-            const twoSquaresFromMinDen = new Set();
-            adjacentToMinDen.forEach(sq1 => {
-                getAdjacentCoords(sq1).forEach(sq2 => {
-                    if (sq2 !== minDen && !adjacentToMinDen.includes(sq2)) {
-                        twoSquaresFromMinDen.add(sq2);
-                    }
-                });
-            });
-
-            const adjacentToMinTraps = getAdjacentCoordsSet(minTraps);
-            const riverRowStart = 3;
-            const riverRowEnd = 5;
-            const centerCols = [2, 3, 4];
-            const jumpLandingCols = [1, 2, 4, 5];
+            const adjacentToMaxDen = getAdjacentCoords(maxDen); // Squares adjacent to AI den
+            const adjacentToMinTraps = getAdjacentCoordsSet(minTraps); // Squares adjacent to Opponent traps
+            const riverRowStart = 3; // Row index where river starts (from top)
+            const riverRowEnd = 5; // Row index where river ends (from top)
+            const jumpLandingCols = [1, 2, 4, 5]; // Columns b, c, e, f
 
             let maxPieceCount = 0;
             let minPieceCount = 0;
-            let maxPiecesNearOppDen = 0;
+            let maxPiecesNearOppDen = 0; // Count pieces in opponent's first 3 rows (for multi-attacker bonus)
 
-            // --- Pre-checks ---
-            if (boardState[maxDen]?.player === opponent) return AI_LOSE_SCORE;
-            if (boardState[minDen]?.player === playerForMax) return AI_WIN_SCORE;
+            // --- Pre-checks for immediate win/loss ---
+            if (boardState[maxDen]?.player === opponent) return AI_LOSE_SCORE; // Opponent in AI den
+            if (boardState[minDen]?.player === playerForMax) return AI_WIN_SCORE; // AI in opponent den
 
-            // --- Pre-calculate Threats, Mobility & Back Row Jumpers ---
-            const threatsTo = {};
-            const threatenedBy = {};
-            let allOpponentMoves = [];
-            let allMyMoves = [];
-            let backRowJumpersExist = false;
-            let opponentTotalValidMoves = 0;
-            let myOffensiveMovesCount = 0; // Track total AI offensive moves
+            // --- Pre-calculate Threats & Back Row Jumpers ---
+            // Threats are calculated ONCE here, rather than per piece
+            const threatsTo = {}; // AI pieces threatened by opponent { coords: true }
+            const threatenedBy = {}; // Opponent pieces threatened by AI { coords: true }
+            let allMyMoves = []; // Needed for threat calculation
+            let allOpponentMoves = []; // Needed for threat calculation
+            let backRowJumpersExist = false; // Flag if AI has Lion/Tiger ready to jump
 
-            try {
-                 allOpponentMoves = getAllValidMoves(boardState, opponent, true);
-                 allMyMoves = getAllValidMoves(boardState, playerForMax, true);
-                 opponentTotalValidMoves = allOpponentMoves.length;
+            try { // Wrap move generation and threat calculation
+                 allMyMoves = getAllValidMoves(boardState, playerForMax, true); // Simulate flag = true
+                 allOpponentMoves = getAllValidMoves(boardState, opponent, true); // Simulate flag = true
 
-                 for (const move of allOpponentMoves) { if (move && move.to && boardState[move.to] && boardState[move.to].player === playerForMax) threatsTo[move.to] = true; }
-                 for (const move of allMyMoves) {
-                    if (move && move.to && boardState[move.to] && boardState[move.to].player === opponent) threatenedBy[move.to] = true;
-                    // Track offensive moves here
-                    const rcFrom = getRowCol(move.from);
-                    const rcTo = getRowCol(move.to);
-                    if(rcFrom && rcTo){
-                        const isForward = (playerForMax === PLAYERS.YELLOW && rcTo.row < rcFrom.row) || (playerForMax === PLAYERS.ORANGE && rcTo.row > rcFrom.row);
-                        const isAttack = !!boardState[move.to] && boardState[move.to].player === opponent;
-                        if(isForward || isAttack) myOffensiveMovesCount++;
-                    }
-                 }
-                 for (const coords in boardState) { // Check for jumpers
-                     const piece = boardState[coords];
-                     if (piece?.player === playerForMax && (piece.rank === 7 || piece.rank === 6)) {
-                         const rc = getRowCol(coords);
-                         if (rc && ((playerForMax === PLAYERS.YELLOW && rc.row >= 6) || (playerForMax === PLAYERS.ORANGE && rc.row <= 2))) { backRowJumpersExist = true; break; }
+                 // Identify which AI pieces can be captured
+                 for (const oppMove of allOpponentMoves) {
+                     if (oppMove && oppMove.to && boardState[oppMove.to]?.player === playerForMax) {
+                         threatsTo[oppMove.to] = true; // Mark AI piece at oppMove.to as threatened
                      }
                  }
-            } catch(e) { console.error("[Eval Error] Error during pre-calculation:", e, "Board:", boardState); return 0; }
+                 // Identify which opponent pieces can be captured by AI
+                 let aiIsThreatening = false; // Does AI threaten ANY opponent piece?
+                 for (const myMove of allMyMoves) {
+                     if (myMove && myMove.to && boardState[myMove.to]?.player === opponent) {
+                         threatenedBy[myMove.to] = true; // Mark opponent piece at myMove.to as threatened by AI
+                         aiIsThreatening = true; // Set flag if any threat exists
+                     }
+                 }
 
-            // --- Apply Opponent Mobility Penalty & AI Mobility Bonus ---
-            score += opponentTotalValidMoves * AI_OPPONENT_MOBILITY_PENALTY_MULT;
-            score += myOffensiveMovesCount * AI_OFFENSIVE_MOBILITY_BONUS_MULT; // Add overall offensive mobility score
+                 // Check for back row jumpers (for blocker penalty)
+                 for (const coords in boardState) {
+                     const piece = boardState[coords];
+                     if (piece?.player === playerForMax && (piece.rank === 7 || piece.rank === 6)) { // Lion or Tiger
+                         const rc = getRowCol(coords);
+                         // Check if in back rows relative to player
+                         const isBackRow = (playerForMax === PLAYERS.YELLOW && rc && rc.row >= 6) || (playerForMax === PLAYERS.ORANGE && rc && rc.row <= 2);
+                         if (isBackRow) {
+                             backRowJumpersExist = true;
+                             break; // Found one, no need to check further
+                         }
+                     }
+                 }
+
+                // Apply global bonus/penalty based on overall threat status
+                if (aiIsThreatening) score += AI_THREATENS_OPPONENT_BONUS;
+                // Penalty for opponent mobility removed
+
+            } catch (e) {
+                console.error("[Eval Error] Error during pre-calculation (moves/threats/jumpers):", e, "Board:", boardState);
+                // Return a neutral score or error score? Let's try neutral.
+                return 0; // Avoid returning extreme scores if pre-calc fails
+            }
 
             // --- Iterate through pieces ---
             for (const coords in boardState) {
-                try {
+                try { // Wrap individual piece processing
                     const piece = boardState[coords];
                     if (!piece) continue;
                     const rc = getRowCol(coords);
-                    if (!rc) continue;
+                    if (!rc) continue; // Should not happen with valid boardState
 
-                    let pieceScore = pieceValues[piece.rank] || 0;
-                    const pieceAbilities = SPECIAL_ABILITIES[piece.rank] || {};
+                    let pieceScore = pieceValues[piece.rank] || 0; // Get base value
                     const isWolfOrCat = piece.rank === 4 || piece.rank === 2;
+                    const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (ROWS - 1 - rc.row) : rc.row; // Corrected: Yellow wants LOW row index (ROWS-1-r), Orange wants HIGH row index (r)
 
-                    // --- Calculate Capture Bonus Potential (for AI pieces only) ---
-                    let captureBonusFromThisPiece = 0;
-                    const pieceMoves = allMyMoves.filter(m => m && m.from === coords); // Moves for THIS piece
+                    // --- Evaluate AI PIECES (playerForMax) ---
                     if (piece.player === playerForMax) {
-                        for (const move of pieceMoves) {
-                             if (!move || !move.to) continue;
-                             const targetPiece = boardState[move.to];
-                             const isAttack = !!targetPiece && targetPiece.player === opponent;
+                        maxPieceCount++;
+                        score += pieceScore; // Add material value
 
-                            if (isAttack) {
-                                let targetRank = targetPiece ? (targetPiece.rank || 0) : 0;
-                                if (isOnTrapSquare(move.to)) targetRank = 0;
-                                const currentRank = piece.rank;
-                                const isRatVsElephant = currentRank === 1 && targetPiece && targetPiece.rank === 8;
-                                if (isRatVsElephant || currentRank >= targetRank) {
-                                     let capturedValue = targetPiece ? (pieceValues[targetPiece.rank] || 10) : 10;
-                                     captureBonusFromThisPiece += capturedValue * AI_CAPTURE_BONUS_MULT;
+                        // 1. Den Pressure Bonus (calculated using helper function)
+                        score += calculateDenPressureBonus(coords, playerForMax, boardState);
+
+                        // 2. Advancement & Piece Role Bonuses/Penalties
+                        if (isWolfOrCat) {
+                            // Penalize Wolf/Cat advancement
+                            score += rowsAdvanced * AI_WOLF_CAT_ADVANCE_PENALTY_MULT;
+                            // Bonus for Wolf/Cat being defensive early/mid game
+                            const defensiveRowThreshold = playerForMax === PLAYERS.YELLOW ? 6 : 2; // Rows 7,8,9 for Y; 1,2,3 for O
+                            if ((isEarlyGame || isMidGame) && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) {
+                                score += AI_WOLF_CAT_DEFENSE_BONUS;
+                            }
+                            // Blocker Penalty (only apply to Wolf/Cat)
+                            const isBlockingRow = (playerForMax === PLAYERS.YELLOW && (rc.row === riverRowEnd + 1 || rc.row === riverRowEnd + 2)) // Rows 6, 7 for Yellow
+                                             || (playerForMax === PLAYERS.ORANGE && (rc.row === riverRowStart - 1 || rc.row === riverRowStart - 2)); // Rows 2, 3 for Orange
+                            const isBlockingCol = jumpLandingCols.includes(rc.col);
+                            if (backRowJumpersExist && isBlockingRow && isBlockingCol) {
+                                score += AI_BLOCKING_JUMPER_PENALTY;
+                            }
+                        } else {
+                            // General advancement bonus for other pieces
+                            score += rowsAdvanced * AI_ADVANCE_BONUS_MULT;
+                            // General "too defensive" penalty for pieces OTHER than Wolf/Cat/Elephant early
+                            const defensiveRowThreshold = playerForMax === PLAYERS.YELLOW ? 6 : 2;
+                            if (isEarlyGame && piece.rank !== 8 && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) {
+                                score += AI_PIECE_TOO_DEFENSIVE_PENALTY;
+                            }
+                        }
+
+                        // 3. Water Control Bonus (Rat/Dog on water)
+                        if ((piece.rank === 1 || piece.rank === 3) && WATER_SQUARES.has(coords)) {
+                            score += AI_WATER_CONTROL_BONUS;
+                        }
+
+                        // 4. Multi-Attacker Bonus Prep (Count pieces near opponent den)
+                        const nearThreshold = playerForMax === PLAYERS.YELLOW ? 2 : 6; // Rows 0,1,2 for Y; 8,7,6 for O
+                        if ((playerForMax === PLAYERS.YELLOW && rc.row <= nearThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= nearThreshold)) {
+                            maxPiecesNearOppDen++;
+                            // General bonus for being near den removed, covered by calculateDenPressureBonus
+                        }
+
+                        // 5. Trap Safety/Danger (Penalize Landing on Guarded Trap Heavily)
+                        if (isOnTrapSquare(coords)) {
+                            const adjacent = getAdjacentCoords(coords);
+                            let isTrapGuarded = false;
+                            for (const adjCoord of adjacent) {
+                                const adjPiece = boardState[adjCoord];
+                                // Check if opponent piece on adjacent square can move onto the trap
+                                if (adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) {
+                                    isTrapGuarded = true;
+                                    break; // Found a guard, no need to check further
+                                }
+                            }
+                            if (isTrapGuarded) {
+                                // Apply heavy penalty related to piece value if trap is guarded
+                                score -= (pieceValues[piece.rank] || 20) * 1.8; // Penalty ~1.8x piece value (ensure constant exists)
+                                score += AI_TRAP_DANGER_PENALTY; // Add base penalty too
+                            } else {
+                                // Smaller penalty for being on an unguarded trap
+                                score += AI_TRAP_DANGER_PENALTY / 3;
+                            }
+                        } else { // Check vulnerability TO a trap attack (being adjacent to a trap an opponent can move to)
+                            const adjacent = getAdjacentCoords(coords);
+                            for (const adjCoord of adjacent) { // Outer loop: Iterate adjacent squares for opponent pieces
+                                const adjPiece = boardState[adjCoord]; // Opponent piece adjacent to AI piece
+                                if (adjPiece?.player === opponent) {
+                                    // Find traps adjacent to the opponent piece
+                                    const trapsNearOpponent = getAdjacentCoords(adjCoord).filter(c => isOnTrapSquare(c));
+                                    for (const trapCoord of trapsNearOpponent) { // Inner loop: Iterate traps near opponent
+                                        // Can opponent move to this trap? AND is it not the AI's current square?
+                                        if (trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
+                                            // If opponent moves to trap, can they capture the AI piece?
+                                            // Attacker rank is normal when attacking FROM trap
+                                            const canCaptureFromTrap = piece && (adjPiece.rank >= piece.rank || (adjPiece.rank === 1 && piece.rank === 8 && !WATER_SQUARES.has(trapCoord))); // Rat exception only from land trap
+                                            if (canCaptureFromTrap) {
+                                                score += AI_TRAP_ATTACK_VULNERABILITY;
+                                                // Break inner loop (trapsNearOpponent) once vulnerability found for this adjPiece
+                                                break; // <<< FIXED: Replace goto with break
+                                            }
+                                        }
+                                    } // End inner loop (trapsNearOpponent)
+                                }
+                                // Removed invalid label 'nextAdjacentCheck:'
+                            } // End outer loop (adjacent)
+                        }
+
+
+                        // 6. Bonus near opponent's traps (Offensive positioning)
+                        if (adjacentToMinTraps.has(coords)) {
+                            score += AI_NEAR_OPP_TRAP_BONUS;
+                        }
+
+                        // 7. Penalty if this AI piece IS threatened
+                        if (threatsTo[coords]) {
+                            score += AI_IS_THREATENED_PENALTY; // Apply penalty based on pre-calculated threats
+                        }
+
+                        // 8. Capture Bonus (Value of piece AI can capture THIS turn)
+                        // Use pre-calculated `allMyMoves` for efficiency
+                        const pieceMoves = allMyMoves.filter(m => m && m.from === coords);
+                        for (const move of pieceMoves) {
+                            if (!move || !move.to) continue;
+                            const targetPiece = boardState[move.to];
+                            // Check if it's a valid capture move (rank check etc. implicitly done by getAllValidMoves)
+                            if (targetPiece && targetPiece.player === opponent) {
+                                let capturedValue = pieceValues[targetPiece.rank] || 10;
+                                // Consider if target is on a trap (value is still based on rank for bonus)
+                                score += capturedValue * AI_CAPTURE_BONUS_MULT;
+                                // Apply only once per piece? Or per potential capture? Per potential capture seems better incentive.
+                            }
+                        }
+
+                        // 9. Forced Trap Suicide Penalty Check
+                        if (piece.isHungry) {
+                             const pieceMoves = allMyMoves.filter(m => m && m.from === coords); // Re-filter needed here scope-wise
+                            const attacks = pieceMoves.filter(m => m && boardState[m.to]?.player === opponent);
+                            if (attacks.length === 1) { // Only one forced attack
+                                const targetSquare = attacks[0].to;
+                                if (isOnTrapSquare(targetSquare)) { // Forced attack is onto a trap
+                                    const targetAdjacent = getAdjacentCoords(targetSquare);
+                                    let isTargetTrapGuarded = false;
+                                    for (const adjToTarget of targetAdjacent) {
+                                        const guardPiece = boardState[adjToTarget];
+                                        // Can opponent move onto the trap to capture?
+                                        if (guardPiece?.player === opponent && isValidMove(adjToTarget, targetSquare, guardPiece, boardState, true).valid) {
+                                            isTargetTrapGuarded = true;
+                                            break;
+                                        }
+                                    }
+                                    if (isTargetTrapGuarded) {
+                                        // Apply penalty because being in this state forces a suicidal capture
+                                        score += AI_HUNGER_FORCES_TRAP_DEATH_PENALTY;
+                                        // if (!isSimulation) console.log(`[Eval] Applied Hunger Forced Trap Death Penalty for ${piece.rank}@${coords} (Forced attack to guarded ${targetSquare})`); // Wrap log
+                                    }
                                 }
                             }
                         }
-                    }
-
-
-                    // --- Evaluate AI PIECES ---
-                    if (piece.player === playerForMax) {
-                        maxPieceCount++;
-                        score += pieceScore;
-                        // Mobility bonus is now added globally, not per piece
-                        score += captureBonusFromThisPiece; // Add potential capture value
-
-                        // A) Den Proximity Bonus
-                        if (adjacentToMinDen.includes(coords)) {
-                            score += AI_DEN_PROXIMITY_BONUS_SQ;
-                            if (piece && !piece.isHungry && isValidMove(coords, minDen, piece, boardState, true).valid) { score += AI_WIN_SCORE / AI_WIN_ADJACENT_BONUS_FACTOR; }
-                        } else if (twoSquaresFromMinDen.has(coords)) { score += AI_DEN_PROXIMITY_BONUS_2SQ; }
-
-                        // B) Advancement & Positional Bonuses
-                        const rowsAdvanced = playerForMax === PLAYERS.YELLOW ? (rc.row) : (ROWS - 1 - rc.row);
-                        const isPastRiver = (playerForMax === PLAYERS.YELLOW && rc.row > riverRowEnd) || (playerForMax === PLAYERS.ORANGE && rc.row < riverRowStart);
-                        const defensiveRowThreshold = playerForMax === PLAYERS.YELLOW ? 6 : 2;
-
-                        if (isWolfOrCat) {
-                            score += rowsAdvanced * AI_WOLF_CAT_ADVANCE_PENALTY_MULT;
-                            if ((isEarlyGame || isMidGame) && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) { score += AI_WOLF_CAT_DEFENSE_BONUS; }
-                            const isBlockingRow = (playerForMax === PLAYERS.YELLOW && (rc.row === riverRowEnd + 1 || rc.row === riverRowEnd + 2)) || (playerForMax === PLAYERS.ORANGE && (rc.row === riverRowStart - 1 || rc.row === riverRowStart - 2));
-                            const isBlockingCol = jumpLandingCols.includes(rc.col);
-                            if (backRowJumpersExist && isBlockingRow && isBlockingCol) { score += AI_BLOCKING_JUMPER_PENALTY; }
-                        } else {
-                            score += rowsAdvanced * AI_ADVANCE_BONUS_MULT; // Base advancement for others
-                            if (piece.rank === 7 || piece.rank === 6) score += rowsAdvanced * AI_JUMPER_OFFENSE_BONUS;
-                            if (piece.rank === 5) score += rowsAdvanced * AI_LEOPARD_OFFENSE_BONUS;
-                            if (piece.rank === 3) score += rowsAdvanced * AI_DOG_OFFENSE_BONUS;
-                            if (piece.rank === 1) score += rowsAdvanced * AI_RAT_OFFENSE_BONUS;
-                            if (isEarlyGame && piece.rank !== 8 && ((playerForMax === PLAYERS.YELLOW && rc.row >= defensiveRowThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row <= defensiveRowThreshold))) { score += AI_PIECE_TOO_DEFENSIVE_PENALTY; }
-                        }
-
-                        // C) Past River & Center Control Bonus
-                        if (isPastRiver) {
-                            score += AI_PAST_RIVER_BONUS;
-                            if (centerCols.includes(rc.col)) score += AI_CENTER_CONTROL_BONUS;
-                        }
-
-                        // D) Water Control Bonus
-                        if ((piece.rank === 1 || piece.rank === 3) && WATER_SQUARES.has(coords)) { score += AI_WATER_CONTROL_BONUS; }
-
-                        // E) Near Opponent Den General Bonus
-                        const nearThreshold = playerForMax === PLAYERS.YELLOW ? 2 : 6;
-                         if ((playerForMax === PLAYERS.YELLOW && rc.row <= nearThreshold) || (playerForMax === PLAYERS.ORANGE && rc.row >= nearThreshold)) { maxPiecesNearOppDen++; score += AI_NEAR_OPP_DEN_BONUS; }
-
-                        // F) Trap Safety/Danger (Penalize Landing on Guarded Trap Heavily)
-                        if (isOnTrapSquare(coords)) {
-                             const adjacent = getAdjacentCoords(coords);
-                             let isTrapGuarded = false;
-                             for(const adjCoord of adjacent) {
-                                const adjPiece = boardState[adjCoord];
-                                if(adjPiece?.player === opponent && isValidMove(adjCoord, coords, adjPiece, boardState, true).valid) { isTrapGuarded = true; break; }
-                             }
-                             if (isTrapGuarded) {
-                                 score -= (pieceValues[piece.rank] || 20) * 1.8; // Penalty ~1.8x piece value
-                                 score += AI_TRAP_DANGER_PENALTY; // Add base penalty too
-                             } else {
-                                score += AI_TRAP_DANGER_PENALTY / 3; // Smaller penalty for unguarded trap
-                             }
-                        } else { // Check vulnerability TO a trap attack
-                             const adjacent = getAdjacentCoords(coords);
-                             for(const adjCoord of adjacent) {
-                                const adjPiece = boardState[adjCoord];
-                                if(adjPiece?.player === opponent) {
-                                    const trapsNearOpponent = getAdjacentCoords(adjCoord).filter(c => isOnTrapSquare(c));
-                                    for (const trapCoord of trapsNearOpponent) {
-                                        if (trapCoord !== coords && isValidMove(adjCoord, trapCoord, adjPiece, boardState, true).valid) {
-                                            const canCaptureFromTrap = piece && (adjPiece.rank >= piece.rank || (adjPiece.rank === 1 && piece.rank === 8 && !WATER_SQUARES.has(trapCoord)));
-                                            if(canCaptureFromTrap) { score += AI_TRAP_ATTACK_VULNERABILITY; break; }
-                                        }
-                                    }
-                                }
-                                 if (score <= (AI_LOSE_SCORE / 1.5)) break;
-                             }
-                        }
-
-                        // G) Bonus near opponent's traps
-                        if (adjacentToMinTraps.has(coords)) score += AI_NEAR_OPP_TRAP_BONUS;
-
-                        // H) Bonus/Penalty based on Threats
-                         let isThreateningOpponent = false;
-                         for(const move of pieceMoves){ if(move && boardState[move.to]?.player === opponent) { isThreateningOpponent = true; break; } }
-                         if(isThreateningOpponent) score += AI_THREATENS_OPPONENT_BONUS;
-                         // Apply HEAVY penalty if piece is threatened
-                         if (threatsTo[coords]) score += AI_IS_THREATENED_PENALTY; // Increased Penalty
-
-
-                         // --- NEW: Penalize state if HUNGRY and ONLY attack leads to GUARDED TRAP ---
-                         if (piece.isHungry) { // Check if the piece *in this state* is hungry
-                             const attacks = pieceMoves.filter(m => m && boardState[m.to]?.player === opponent);
-                             if (attacks.length === 1) { // Is there exactly one attack option?
-                                 const forcedAttack = attacks[0];
-                                 const targetSquare = forcedAttack.to;
-                                 if (isOnTrapSquare(targetSquare)) { // Is that option onto a trap?
-                                      // Is the target trap guarded?
-                                     const targetAdjacent = getAdjacentCoords(targetSquare);
-                                     let isTargetTrapGuarded = false;
-                                     for (const adjToTarget of targetAdjacent) {
-                                         const guardPiece = boardState[adjToTarget];
-                                         if (guardPiece?.player === opponent && isValidMove(adjToTarget, targetSquare, guardPiece, boardState, true).valid) {
-                                             isTargetTrapGuarded = true; break;
-                                         }
-                                     }
-                                     if (isTargetTrapGuarded) {
-                                         score += AI_HUNGER_FORCES_TRAP_DEATH_PENALTY; // Apply heavy penalty TO THIS STATE
-                                         // console.log(`[Eval] Applied Hunger Forced Trap Death Penalty for ${piece.rank}@${coords} (Forced attack to guarded ${targetSquare})`);
-                                     }
-                                 }
-                             }
-                         }
-                         // --- END Forced Trap Death Check ---
 
 
                     }
                     // --- Evaluate OPPONENT PIECES ---
-                    else {
+                    else { // piece.player === opponent
                         minPieceCount++;
-                        score -= pieceScore;
-                        // Opponent mobility penalty applied globally
+                        score -= pieceScore; // Subtract material value
 
-                        // Subtract opponent threat bonus (Penalize AI if opponent threatens AI pieces)
-                         let opponentIsThreatening = false;
-                         const oppPieceMoves = allOpponentMoves.filter(m => m && m.from === coords);
-                         for(const oppMove of oppPieceMoves){ if(oppMove && boardState[oppMove.to]?.player === playerForMax){ opponentIsThreatening = true; break; } }
-                         if(opponentIsThreatening) score -= AI_THREATENS_OPPONENT_BONUS;
-
-
-                        // 1. Immediate Threat Penalty
-                        const isOnMaxTrap = maxTraps.has(coords);
-                        const isAdjacentToMaxDen = adjacentToMaxDen.includes(coords);
-                        if (isAdjacentToMaxDen || isOnMaxTrap) {
-                            score += AI_NEAR_OWN_DEN_PENALTY;
-                             if (piece && !piece.isHungry && isValidMove(coords, maxDen, piece, boardState, true).valid) {
-                                 score += AI_IMMEDIATE_WIN_THREAT_PENALTY;
-                             }
+                        // 1. Penalty for opponent near AI den (Threat)
+                        const isOnMaxTrap = maxTraps.has(coords); // Is opponent on trap near AI den
+                        const isAdjacentToMaxDenSq = adjacentToMaxDen.includes(coords); // Is opponent adjacent to AI den
+                        if (isAdjacentToMaxDenSq || isOnMaxTrap) {
+                            score += AI_NEAR_OWN_DEN_PENALTY; // General penalty for proximity
+                            // Check if opponent can actually win next turn
+                            if (piece && !piece.isHungry && isValidMove(coords, maxDen, piece, boardState, true).valid) {
+                                score += AI_IMMEDIATE_WIN_THREAT_PENALTY; // High penalty if win is imminent
+                            }
                         }
-                         // Reward AI if opponent piece IS threatened by AI
-                         if (threatenedBy[coords]) {
-                             score -= AI_IS_THREATENED_PENALTY; // Add reward (subtract large negative penalty)
-                         }
+
+                        // 2. Reward AI if this opponent piece IS threatened by the AI
+                        if (threatenedBy[coords]) {
+                            // Add reward (subtract negative penalty) for threatening opponent piece
+                            // The magnitude should be related to AI_IS_THREATENED_PENALTY perhaps?
+                             score -= AI_IS_THREATENED_PENALTY / 2; // Example: Half the penalty value as a bonus
+                        }
                     }
                 } catch (e) {
-                     console.error(`[Eval Error] Error processing piece at ${coords}:`, e, "Piece:", boardState[coords], "Board:", boardState);
-                     continue;
+                    console.error(`[Eval Error] Error processing piece at ${coords}:`, e, "Piece:", boardState[coords], "Board:", boardState);
+                    continue; // Skip to next piece on error
                 }
             } // End piece loop
 
-            // --- Post-Iteration Checks ---
-            if (minPieceCount === 0) return AI_WIN_SCORE;
-            if (maxPieceCount === 0) return AI_LOSE_SCORE;
-             if (maxPiecesNearOppDen >= 2) score += AI_MULTI_ATTACKER_BONUS * maxPiecesNearOppDen;
+            // --- Post-Iteration Checks & Bonuses ---
+            // Win/Loss by Elimination
+            if (minPieceCount === 0 && maxPieceCount > 0) return AI_WIN_SCORE; // AI wins if opponent has no pieces
+            if (maxPieceCount === 0 && minPieceCount > 0) return AI_LOSE_SCORE; // AI loses if it has no pieces
 
-            score += (Math.random() - 0.5) * 0.1;
-            return score;
+            // Multi-Attacker Bonus (If 2+ pieces are near opponent den)
+            if (maxPiecesNearOppDen >= 2) {
+                score += AI_MULTI_ATTACKER_BONUS * maxPiecesNearOppDen; // Scale bonus
+            }
+
+            // Add tiny random nudge for tie-breaking in non-terminal states
+            if (Math.abs(score) < AI_WIN_SCORE / 1.1) { // Avoid adding to definite win/loss scores
+                score += (Math.random() - 0.5) * 0.1; // +/- 0.05
+            }
+
+            return score; // Return final calculated score
         }
 
 
